@@ -1,0 +1,28 @@
+# Global settings for the f1ml pipeline.
+data_dir: data              # relative to the project root (or absolute)
+min_season: 2020            # oldest season the pipeline will ingest
+
+cleaning:
+  dirty_air_gap_s: 1.5      # gap to the car ahead at the line below which a lap is "dirty air"
+  outlier_pct: 0.05         # lap > (1 + outlier_pct) x stint median => outlier
+  min_long_run_laps: 5      # "best clean stint of five laps or more" (Buscombe)
+
+normalisation:
+  # Combined fuel-burn + track-evolution effect (s/lap gained per lap of race).
+  # Buscombe cites 0.03-0.04 (Budapest) up to 0.065 (Austin). Used as a weak
+  # Gaussian prior in the per-race joint fit; data dominates when it is rich.
+  fuel_effect_prior_mean: 0.045
+  fuel_effect_prior_sd: 0.03
+  deg_prior_mean: 0.05
+  deg_prior_sd: 0.15
+  huber_k: 1.5              # robust-fit threshold in residual SDs
+  min_laps_for_fit: 60
+
+telemetry:
+  # "The window": speed band where the tyre (not power or wing) limits the car.
+  window_low_kph: 70
+  window_high_kph: 150
+
+sources:
+  jolpica_base_url: https://api.jolpi.ca/ergast/f1
+  jolpica_min_interval_s: 0.3

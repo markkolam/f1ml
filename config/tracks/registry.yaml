@@ -1,0 +1,96 @@
+# Track registry. A track is identified by a stable `id`; `aliases` are the
+# Location strings that the timing data's event schedule uses for it.
+# Locations not listed here get an auto-generated id (slugified Location) and
+# are reported by `f1ml tracks-check` so they can be added.
+#
+# `versions` record layout or surface changes. Each lap is tagged with the
+# version in force, so models can pool across versions of the same circuit
+# while still letting a resurface or a new chicane shift the parameters.
+#
+# Measured quantities (pit loss, overtaking threshold, SC hazard, window %)
+# are NOT hand-entered here: they are estimated from data in later phases.
+
+tracks:
+  - id: albert_park
+    aliases: [Melbourne]
+    versions:
+      - {from_season: 2022, label: "2022 revised layout (T9-10 chicane removed, track widened)"}
+  - id: yas_marina
+    aliases: [Yas Island, Yas Marina, Abu Dhabi]
+    versions:
+      - {from_season: 2021, label: "2021 revised layout"}
+  - id: catalunya
+    aliases: [Barcelona, Montmeló]
+    versions:
+      - {from_season: 2023, label: "2023 final chicane removed"}
+  - id: marina_bay
+    aliases: [Marina Bay, Singapore]
+    versions:
+      - {from_season: 2023, label: "2023 revised T16-19 section"}
+  - id: rodriguez
+    aliases: [Mexico City]
+    versions:
+      - {from_season: 2026, label: "2026 resurface T11 to T1 (Buscombe, 'Mexico is Monaco')"}
+  - id: madring
+    aliases: [Madrid]
+    versions: []
+  - id: monaco
+    aliases: [Monaco, Monte Carlo]
+    versions: []
+  - id: monza
+    aliases: [Monza]
+    versions: []
+  - id: hungaroring
+    aliases: [Budapest]
+    versions: []
+  - id: baku
+    aliases: [Baku]
+    versions: []
+  - id: americas
+    aliases: [Austin]
+    versions: []
+  - id: zandvoort
+    aliases: [Zandvoort]
+    versions: []
+  - id: silverstone
+    aliases: [Silverstone]
+    versions: []
+  - id: spa
+    aliases: [Spa-Francorchamps, Spa]
+    versions: []
+  - id: suzuka
+    aliases: [Suzuka]
+    versions: []
+  - id: interlagos
+    aliases: [São Paulo, Sao Paulo]
+    versions: []
+  - id: losail
+    aliases: [Lusail, Losail]
+    versions: []
+  - id: jeddah
+    aliases: [Jeddah]
+    versions: []
+  - id: bahrain
+    aliases: [Sakhir]
+    versions: []
+  - id: red_bull_ring
+    aliases: [Spielberg]
+    versions: []
+  - id: villeneuve
+    aliases: [Montréal, Montreal]
+    versions: []
+  - id: miami
+    aliases: [Miami]
+    versions: []
+  - id: imola
+    aliases: [Imola]
+    versions: []
+  - id: vegas
+    aliases: [Las Vegas]
+    versions: []
+  - id: shanghai
+    aliases: [Shanghai]
+    versions: []
+  - id: sepang
+    aliases: [Sepang, Kuala Lumpur]
+    versions: []

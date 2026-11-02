@@ -1,0 +1,6 @@
+# Calendar, teams and drivers are read from the timing data at ingest time;
+# this file only carries what the data cannot tell us.
+season: 2022
+era: 2022_ground_effect
+compound_range: [C1, C2, C3, C4, C5]
+overrides: {}

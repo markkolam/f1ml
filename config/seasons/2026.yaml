@@ -1,0 +1,6 @@
+# Calendar, teams and drivers are read from the timing data at ingest time;
+# this file only carries what the data cannot tell us.
+season: 2026
+era: 2026_active_aero
+compound_range: null           # TODO: fill from Pirelli's 2026 range announcement
+overrides: {}

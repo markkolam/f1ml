@@ -1,0 +1,26 @@
+# Ground-effect cars, 18-inch wheels, DRS.
+id: 2022_ground_effect
+name: "2022-2025 ground-effect regulations"
+first_season: 2022
+last_season: 2025
+transfer_from: 2017_wide_cars  # previous-era posteriors become down-weighted priors
+
+technical:
+  wheel_rim_in: 18
+  drs: true
+  active_aero: false
+  mgu_h: true
+  mguk_max_kw: 120
+  refuelling: false
+  ground_effect_floor: true
+
+sporting:
+  cars_per_team: 2
+  grid_size: 20
+  mandatory_dry_compounds: 2
+  points:
+    race: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+    fastest_lap_bonus: 1      # overridden to 0 in seasons/2025.yaml
+    sprint: [8, 7, 6, 5, 4, 3, 2, 1]
+
+plugins: [drs]

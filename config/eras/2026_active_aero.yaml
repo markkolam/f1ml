@@ -1,0 +1,27 @@
+# 2026 regulations: active aero (Straight Mode), no DRS, ~50/50 ICE/electric power,
+# MGU-H removed, 11 teams / 22 cars.
+id: 2026_active_aero
+name: "2026+ active-aero / energy regulations"
+first_season: 2026
+last_season: null              # open-ended until the next reset
+transfer_from: 2022_ground_effect
+
+technical:
+  wheel_rim_in: 18
+  drs: false
+  active_aero: true
+  mgu_h: false
+  mguk_max_kw: 350
+  refuelling: false
+  ground_effect_floor: false
+
+sporting:
+  cars_per_team: 2
+  grid_size: 22
+  mandatory_dry_compounds: 2
+  points:
+    race: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+    fastest_lap_bonus: 0
+    sprint: [8, 7, 6, 5, 4, 3, 2, 1]
+
+plugins: [active_aero_energy]

@@ -1,0 +1,26 @@
+# Wider cars & tyres, 13-inch wheels, DRS. Covers the 2020-2021 seasons in our data window.
+id: 2017_wide_cars
+name: "2017-2021 wide-car regulations"
+first_season: 2017
+last_season: 2021
+transfer_from: null           # oldest era in the data window: no prior era to borrow from
+
+technical:
+  wheel_rim_in: 13
+  drs: true
+  active_aero: false
+  mgu_h: true
+  mguk_max_kw: 120
+  refuelling: false
+  ground_effect_floor: false
+
+sporting:
+  cars_per_team: 2
+  grid_size: 20
+  mandatory_dry_compounds: 2  # must use two different dry compounds unless wet tyres are used
+  points:
+    race: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+    fastest_lap_bonus: 1      # only if classified in the top 10
+    sprint: [3, 2, 1]         # 2021 format
+
+plugins: [drs]
