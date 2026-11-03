@@ -101,7 +101,7 @@ def fit_hazard(rows: pd.DataFrame, track_sd: float = 0.6, lap1_sd: float = 0.8) 
         races = sub[["season", "round"]].drop_duplicates()
         base = b0 + u[i] + bi["race_frac"] * 0.5
         tab.append({
-            "track_id": t, "n_races": len(races),
+            "track_id": t, "n_races": len(races), "u": u[i], "v": v[i],
             "obs_lap1_rate": sub.loc[sub["lap1"] == 1, "event"].mean(),
             "obs_events_per_race": sub["event"].sum() / len(races),
             "p_lap1": sig(b0 + u[i] + v[i] + bi["lap1"] + bi["race_frac"] * (1 / 50)),
@@ -116,8 +116,26 @@ def fit_hazard(rows: pd.DataFrame, track_sd: float = 0.6, lap1_sd: float = 0.8) 
     return {"flags_coefs": coefs, "flags_track": pd.DataFrame(tab), "flags_type_share": shares}
 
 
+def durations(laps: pd.DataFrame) -> pd.DataFrame:
+    """Length in laps of every neutralisation period (by the leader's lap status), per era and type."""
+    out = []
+    for (s, r), L in laps.groupby(["season", "round"]):
+        lead = L.sort_values("time_s").groupby("lap_number").first()
+        typ = lead["track_status"].astype(str).map(neutral_type)
+        run_t, run_n = None, 0
+        for t in list(typ) + [None]:
+            if t == run_t and t is not None:
+                run_n += 1
+                continue
+            if run_t is not None:
+                out.append({"season": s, "round": r, "era_id": L["era_id"].iloc[0], "type": run_t, "laps": run_n})
+            run_t, run_n = t, 1
+    return pd.DataFrame(out, columns=["season", "round", "era_id", "type", "laps"])
+
+
 def fit_flags(rd: RaceData) -> dict[str, pd.DataFrame]:
     rows = hazard_rows(rd.laps)
     out = fit_hazard(rows)
     out["flags_rows"] = rows
+    out["flags_durations"] = durations(rd.laps)
     return out

@@ -267,6 +267,112 @@ def components(
         typer.echo(f"report: {path}")
 
 
+def _parse_overrides(items: list[str] | None) -> dict[str, str]:
+    out = {}
+    for it in items or []:
+        drv, _, plan = it.partition("=")
+        if not plan:
+            raise typer.BadParameter(f"--strategy {it!r}: use DRIVER=PLAN, e.g. VER=S-M-H@14,38")
+        out[drv.strip().upper()] = plan.strip()
+    return out
+
+
+@app.command()
+def simulate(
+    season: int = typer.Option(...),
+    round_: int = typer.Option(..., "--round"),
+    strategy: Optional[list[str]] = typer.Option(None, help="DRIVER=PLAN, e.g. VER=S-M-H@14,38 (repeatable)"),
+    sims: int = typer.Option(5000),
+    seed: int = typer.Option(0),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Simulate a race from its pre-race data (qualifying must be ingested)."""
+    from f1ml.features import build_features
+    from f1ml.sim import default_strategies, parse_plan, plan_text, simulate as run
+    from f1ml.sim.params import PreraceContext, prerace_params
+    from f1ml.sim.replay import components_as_of
+    from f1ml.sim.strategy import candidate_plans
+
+    _, store = _setup(verbose)
+    feats = build_features(store, include_upcoming=True)
+    g = feats[(feats["season"] == season) & (feats["round"] == round_)]
+    if g.empty:
+        typer.echo(f"no qualifying data for {season} R{round_}")
+        raise typer.Exit(1)
+    comps = components_as_of(store, g["date"].iloc[0])
+    p = prerace_params(store, season, round_, PreraceContext(comps, g))
+    strats = default_strategies(p)
+    for drv, plan in _parse_overrides(strategy).items():
+        strats[p.drivers.index(drv)] = [parse_plan(plan, p.compounds)]
+    typer.echo(f"{season} R{round_}: {p.laps} laps, ref lap {p.ref_lap_s:.1f} s, green pit loss "
+               f"{p.pit_loss_s[0]:.1f} s, deg S/M/H {p.deg_s.round(3).tolist()} s/lap")
+    typer.echo("best default plans: " + ", ".join(f"{plan_text(s, p.compounds)} (+{t - candidate_plans(p)[0][0]:.1f}s)"
+                                                  for t, s in candidate_plans(p)[:5]))
+    res = run(p, strats, n_sims=sims, seed=seed)
+    typer.echo(res.summary().round(3).to_string(index=False))
+
+
+@app.command()
+def whatif(
+    season: int = typer.Option(...),
+    round_: int = typer.Option(..., "--round"),
+    strategy: list[str] = typer.Option(..., help="DRIVER=PLAN for the alternative (repeatable)"),
+    sims: int = typer.Option(2000),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Replay a finished race as it happened, then with changed strategies (Buscombe's 'What If?')."""
+    import numpy as np
+
+    from f1ml.sim import parse_plan, plan_text, simulate as run
+    from f1ml.sim.params import replay_inputs
+    from f1ml.sim.replay import components_as_of
+
+    _, store = _setup(verbose)
+    date = store.query(f"SELECT event_date FROM raw_events WHERE season={season} AND round={round_}")["event_date"].iloc[0]
+    ri = replay_inputs(store, season, round_, components_as_of(store, date))
+    alt = list(ri.strategies)
+    changes = _parse_overrides(strategy)
+    for drv, plan in changes.items():
+        alt[ri.params.drivers.index(drv)] = parse_plan(plan, ri.params.compounds)
+    base = run(ri.params, ri.strategies, n_sims=sims, seed=1, overrides=ri.overrides, stop_jitter=0)
+    new = run(ri.params, alt, n_sims=sims, seed=1, overrides=ri.overrides, stop_jitter=0)
+    for drv in changes:
+        k = ri.params.drivers.index(drv)
+        act = ri.actual.set_index("driver").loc[drv]
+        typer.echo(f"{drv}: actual P{int(act['finish_order'])} on {plan_text(ri.strategies[k], ri.params.compounds)}")
+        for name, r in (("as run", base), ("what if", new)):
+            pos = r.position[:, k]
+            plan = plan_text(ri.strategies[k] if name == "as run" else alt[k], ri.params.compounds)
+            typer.echo(f"  {name:8s} {plan:<14s} median P{np.median(pos):.0f}  P(win) {np.mean(pos == 1):.2f}  "
+                       f"P(podium) {np.mean(pos <= 3):.2f}  mean pos {pos.mean():.2f}")
+
+
+@app.command()
+def calibrate(
+    from_: int = typer.Option(2024, "--from"),
+    to: int = typer.Option(2026, "--to"),
+    sims: int = typer.Option(1000),
+    report: str = typer.Option("reports/simulator.md"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Replay every dry race with the strategies actually run and compare with the real result."""
+    from pathlib import Path
+
+    from f1ml.sim.replay import calibrate as run_cal
+    from f1ml.sim.report import write_sim_report
+
+    cfg, store = _setup(verbose)
+    per_race, per_driver = run_cal(store, list(range(from_, to + 1)), n_sims=sims,
+                                   progress=(lambda m: typer.echo(f"  {m}")) if verbose else None)
+    store.write_table(per_race, "features", "sim_calibration")
+    store.write_table(per_driver, "features", "sim_calibration_drivers")
+    path = Path(report) if Path(report).is_absolute() else cfg.root / report
+    write_sim_report(per_race, per_driver, path)
+    dry = per_race[~per_race.get("wet", False).fillna(True).astype(bool)] if "wet" in per_race else per_race
+    typer.echo(dry[["spearman", "pos_in_10_90", "gap_mae_s", "gap_in_10_90", "winner_correct"]].mean().round(3).to_string())
+    typer.echo(f"report: {path}")
+
+
 @app.command()
 def query(sql: str, verbose: bool = typer.Option(False, "-v")):
     """Run SQL over the stored tables (views: raw_laps, clean_laps, features_fit_params, ...)."""

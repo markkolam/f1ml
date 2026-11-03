@@ -108,6 +108,44 @@ Known limits of phase 3:
 - Compounds are keyed by label until Pirelli C-numbers are configured.
 - Pass thresholds use the expected (race-average) pace gap.
 
+## Phase 4: race simulator
+```bash
+f1ml simulate --season 2026 --round 19                               # pre-race: odds per driver
+f1ml simulate --season 2026 --round 19 --strategy "VER=M-H@30"       # force a car's plan
+f1ml whatif --season 2026 --round 18 --strategy "VER=S-M-S@13,40"    # replay a past race with a changed plan
+f1ml calibrate --from 2024 --to 2026                                 # replay check, reports/simulator.md
+f1ml backtest --models grid,lgbm,sim --report reports/backtest_sim.md
+```
+- **Engine** (`src/f1ml/sim/engine.py`): a lap-by-lap Monte Carlo of every car, vectorised over simulations (2,000 races in under a second). Each lap it handles:
+  - lap time: car pace + compound base + deg x age, minus fuel burn, plus noise;
+  - dirty air;
+  - pass attempts on the track's S-curve, using the expected pace gap and the driver's conversion shift;
+  - pit loss by condition;
+  - SC/VSC/red flags drawn from the hazard model, with field compression at SC restarts and a free tyre change under a red flag;
+  - reactive stops under a cheap SC/VSC;
+  - random retirements.
+- **Strategies** (`sim/strategy.py`): plan strings such as `S-M-H@14,38`. The default plans are the fastest 1-, 2- and 3-stop sequences from the stint-time model. Each car draws one of the plans within 8 s of the best.
+- **Inputs** (`sim/params.py`):
+  - *Pre-race*: components fitted only on earlier races, plus car pace from the pace tracker blended 50/50 with this weekend's qualifying gap.
+  - *Replay*: the race's own fitted pace and tyres, plus the strategies, neutralisations, retirements and lap-1 order that actually happened.
+- **Replay check** (`sim/replay.py`): Buscombe's standard, "reproduce the real race before it earns an opinion about a fake one". `f1ml whatif` builds on it.
+
+Results (2024 - Mexico 2026):
+- **Replay check, 58 dry races** (`reports/simulator.md`):
+  - finishing-order rank correlation 0.90;
+  - the simulated favourite won 76% of the time;
+  - 70% of actual positions fell inside the simulated 10-90% range (ideal ~80%, so the ranges are a little narrow);
+  - median gap error 10 s, with the worst races decided by collisions (Austria 2024, Canada 2025).
+- **Pre-race backtest, 66 races** (`reports/backtest_sim.md`): `sim` scores winner log loss 1.369 against `lgbm`'s 1.317 and rank correlation 0.686 against 0.705.
+  - It is better than `lgbm` on winners in 2025 and 2026, and worse in 2024, when it only had 2023 history.
+  - It does **not** replace `lgbm` as the default predictor. It is the engine for strategy and what-if questions (phase 5).
+
+Known limits of phase 4:
+- Lapped traffic and blue flags are not modelled.
+- Wet and mixed races are skipped in replays.
+- The linear tyre model cannot see the low-fuel grip advantage Buscombe describes ("the compound is worth nothing at lap 5 and everything at lap 50").
+- Other cars do not react to a changed strategy in `whatif`.
+
 ## Known limits of phase 1
 - `fuel_effect` combines fuel burn and track evolution, which both scale with race lap.
 - Deg is linear per compound within a race fit. Phase 3 adds a temperature slope and pooling, but not graining or cliffs.

@@ -70,6 +70,10 @@ def fit_temperature(est: pd.DataFrame, n_iter: int = 5) -> tuple[float, float, p
     d = d[multi.to_numpy()]
     keys = [k for k, m in zip(keys, multi) if m]
     cells = sorted(set(keys))
+    # need repeat visits (same track, different year) with some temperature spread; early in the
+    # data window (one season only) there are none, so assume no temperature effect yet
+    if len(d) < len(cells) + 5 or d["dt"].std() == 0:
+        return 0.0, float("nan"), ref
     X = np.zeros((len(d), len(cells) + 1))
     idx = {c: i for i, c in enumerate(cells)}
     X[np.arange(len(d)), [idx[c] for c in keys]] = 1
@@ -82,8 +86,8 @@ def fit_temperature(est: pd.DataFrame, n_iter: int = 5) -> tuple[float, float, p
         beta, *_ = np.linalg.lstsq(X * sw[:, None], y * sw, rcond=None)
         r = y - X @ beta
         tau2 = max(0.0, float(np.mean(r**2) - np.mean(d["deg_se"] ** 2)))
-    cov = np.linalg.inv((X * w[:, None]).T @ X)
-    return float(beta[-1]), float(np.sqrt(cov[-1, -1])), ref
+    cov = np.linalg.pinv((X * w[:, None]).T @ X)
+    return float(beta[-1]), float(np.sqrt(max(cov[-1, -1], 0.0))), ref
 
 
 def fit_tyre(store: Store, rd: RaceData) -> dict[str, pd.DataFrame]:
