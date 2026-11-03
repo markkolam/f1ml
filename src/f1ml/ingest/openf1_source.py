@@ -104,12 +104,16 @@ def status_timeline(rc: pd.DataFrame) -> tuple[np.ndarray, list[frozenset]]:
         scope = str(m.get("scope") or "")
         msg = str(m.get("message") or "").upper()
         if cat == "SafetyCar":
-            if "VIRTUAL SAFETY CAR DEPLOYED" in msg:
+            # 2023-25 wording "VIRTUAL SAFETY CAR DEPLOYED"; 2026 wording "VSC DEPLOYED"
+            if "VIRTUAL SAFETY CAR DEPLOYED" in msg or msg.startswith("VSC DEPLOYED"):
                 vsc = "6"
-            elif "VIRTUAL SAFETY CAR ENDING" in msg:
+            elif "VIRTUAL SAFETY CAR ENDING" in msg or msg.startswith("VSC ENDING"):
                 vsc = "7"
             elif "SAFETY CAR DEPLOYED" in msg:
                 sc = True
+        elif msg.startswith("RED FLAG"):
+            # 2026: "RED FLAG - RACE SUSPENDED" arrives with category "Other", not "Flag"
+            red = True
         elif cat == "Flag":
             if flag == "RED":
                 red = True

@@ -79,14 +79,37 @@ f1ml predict --season 2026 --round 20          # after `f1ml update` has ingeste
   - Track history: grid-to-finish correlation ("Saturday or Sunday track"), places changed, share of races with a Safety Car.
   - Era: races since the current rules began.
 - **Models** (`src/f1ml/models/`):
-  - `lgbm`: LightGBM LambdaRank with monotone constraints.
+  - `lgbm` (default): LightGBM LambdaRank with monotone constraints, blended with the grid order. The blend weights are fitted on held-out races.
+  - `lgbm_pure`: the ranker without the blend.
   - `grid` and `quali`: baselines.
 
   Every model's scores become probabilities through a Plackett-Luce finishing-order model, whose scale is calibrated on held-out races.
 - **Backtest** (`src/f1ml/eval/`): each race is predicted by a model trained only on earlier races. Metrics are rank correlation, winner log loss, Brier scores for win and podium, favourite hit rate, top-3 overlap and position error.
 
+## Phase 3: component models
+```bash
+f1ml components            # fits all components, writes features/comp_* tables + reports/components.md
+```
+Each component is fitted from race data per track and era. Thin evidence is pulled toward the era average by empirical-Bayes pooling (`src/f1ml/components/pooling.py`). `reports/components.md` compares each component with Ruth Buscombe's published figures.
+
+| Component | What it estimates | Main tables |
+|---|---|---|
+| `tyre` | Deg and base pace per track x era x compound. Wet races are excluded. A track-temperature slope is learnt within track across years. | `comp_tyre_track`, `comp_tyre_params` |
+| `pitloss` | Green pit loss measured against cars that stayed out. VSC/SC losses are *derived* with her ~0.52 ratio, because they can't be measured from lap sums. | `comp_pitloss_track` |
+| `overtake` | Pass S-curve per track (her "pass ladder"): attempts within 1.2 s under green, with per-driver conversion and the dirty-air cost. | `comp_overtake_track`, `comp_overtake_driver`, `comp_dirty_air_track` |
+| `flags` | Per-lap SC/VSC/red hazard covering lap 1, restarts, pit-window activity, late race, wet and track effects, plus the event-type mix per era. | `comp_flags_track`, `comp_flags_coefs` |
+| `start` | Lap-1 places gained by grid slot, grid-side effect per track, lap-1 concertina. | `comp_start_*` |
+| `pace` | Kalman local-level tracker of team and driver pace with one-step-ahead predictions (leakage-free). | `comp_pace_*` |
+
+`fit_components(store, as_of=date)` fits every component on races before a date, for walk-forward use in the race simulator (phase 4).
+
+Known limits of phase 3:
+- There is no tyre cliff or graining term yet; deg is linear in tyre age within a stint.
+- Compounds are keyed by label until Pirelli C-numbers are configured.
+- Pass thresholds use the expected (race-average) pace gap.
+
 ## Known limits of phase 1
 - `fuel_effect` combines fuel burn and track evolution, which both scale with race lap.
-- Deg is linear per compound. Temperature, graining and cliffs come in phase 3.
+- Deg is linear per compound within a race fit. Phase 3 adds a temperature slope and pooling, but not graining or cliffs.
 - Practice fuel loads are unknown. Long-run deg uses the configured prior fuel effect.
 - Regulation plugins declare their data needs only. Their simulator hooks are phase 6.

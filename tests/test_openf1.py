@@ -93,3 +93,19 @@ def test_build_results_race_and_quali():
                                      "dns": False, "dsq": False, "duration": [70.1, 69.5, 69.0]}]), drivers, None)
     assert (q.q1_s[0], q.q2_s[0], q.q3_s[0]) == (70.1, 69.5, 69.0) and np.isnan(q.time_s[0])
     conform(r.assign(season=2024, round=21, session="R"), "results")
+
+
+def test_status_timeline_2026_wording():
+    """2026 race control says 'VSC DEPLOYED' and files red flags under category 'Other'."""
+    rc = rc_frame([
+        (iso(0), "Flag", "GREEN", "Track", None, "GREEN LIGHT - PIT EXIT OPEN"),
+        (iso(100), "SafetyCar", None, None, None, "VSC DEPLOYED"),
+        (iso(150), "SafetyCar", None, None, None, "VSC ENDING"),
+        (iso(160), "Flag", "CLEAR", "Track", None, "TRACK CLEAR"),
+        (iso(300), "Other", None, None, None, "RED FLAG - RACE SUSPENDED"),
+        (iso(400), "Other", None, None, None, "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 5 (BOR) - VSC INFRINGEMENT"),
+    ])
+    times, states = status_timeline(rc)
+    s = pd.Series(T0 + pd.to_timedelta([110, 152, 200, 310, 410], unit="s"))
+    e = pd.Series(T0 + pd.to_timedelta([140, 158, 250, 350, 450], unit="s"))
+    assert lap_status(s, e, times, states) == ["6", "7", "1", "5", "5"]

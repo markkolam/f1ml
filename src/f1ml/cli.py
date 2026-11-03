@@ -243,6 +243,31 @@ def predict(
 
 
 @app.command()
+def components(
+    only: Optional[str] = typer.Option(None, help="Comma list: tyre,pitloss,overtake,flags,start,pace"),
+    report: str = typer.Option("reports/components.md", help="Markdown report path (relative to project root)"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Fit the phase-3 component models on all stored races and write features/comp_* tables."""
+    from pathlib import Path
+
+    from f1ml.components import COMPONENTS, fit_components
+    from f1ml.components.report import benchmark_table, write_components_report
+
+    cfg, store = _setup(verbose)
+    chosen = tuple(only.split(",")) if only else COMPONENTS
+    tables = fit_components(store, only=chosen)
+    for name, df in tables.items():
+        store.write_table(df, "features", f"comp_{name}")
+    typer.echo(f"wrote {len(tables)} tables: " + ", ".join(f"comp_{n}" for n in tables))
+    if set(chosen) == set(COMPONENTS):
+        path = Path(report) if Path(report).is_absolute() else cfg.root / report
+        write_components_report(tables, path)
+        typer.echo(benchmark_table(tables).round(3).to_string())
+        typer.echo(f"report: {path}")
+
+
+@app.command()
 def query(sql: str, verbose: bool = typer.Option(False, "-v")):
     """Run SQL over the stored tables (views: raw_laps, clean_laps, features_fit_params, ...)."""
     _, store = _setup(verbose)
