@@ -146,6 +146,37 @@ Known limits of phase 4:
 - The linear tyre model cannot see the low-fuel grip advantage Buscombe describes ("the compound is worth nothing at lap 5 and everything at lap 50").
 - Other cars do not react to a changed strategy in `whatif`.
 
+## Phase 5: strategy layer
+```bash
+f1ml strategy --season 2026 --round 18 --driver VER                          # plan vote, crossover, tyre-model regret
+f1ml strategy --season 2026 --round 18 --driver VER --sc-sweep --rivals 6 --teammate
+f1ml strategy-check --from 2024 --to 2026                                    # recommended vs what winners ran
+```
+`f1ml strategy` writes a briefing to `reports/strategy_<season>_<round>_<driver>.md`. Each part follows one of Buscombe's ideas:
+
+| Part | What it does | Buscombe |
+|---|---|---|
+| Plan vote | Every candidate plan for the driver is run through the *same* simulated races (common random numbers), showing the share of races each plan wins and the paired difference from the best with its SE | "if it's 299 against one, we go with the data; 150 vs 150, the driver is the casting vote" |
+| Objective | points, P(win), P(podium), P(top 10) or position; `auto` picks one from the driver's situation | "the best strategy depends on who you are" |
+| Crossover | The deg level at which another stop starts to pay | "the line between a one-stop and a two-stop is a tyre deg of about 0.07s a lap" |
+| Tyre-model regret | Plans re-run under lower, higher, "soft falls off" and "all equal" deg; the minimax-regret plan is the robust one | "same car, same pit loss, two tyre models" |
+| SC on every lap | A Safety Car forced on each lap in turn; share of laps on which each plan was best | "I ran one Safety Car on every lap from 3 to 53" |
+| Rivals | Iterated best responses among the drivers around the focus driver | "build your race on what your competitors will do" |
+| Teammate | All plan pairs for the two cars: team points and P(either wins), split vs same plan | "teams that pair strategies win championships" |
+
+History check (`f1ml strategy-check`, 59 dry races 2024 - Mexico 2026): the pre-race recommendation for the eventual winner agrees only loosely with what they ran.
+- The number of stops matched in 54% of races. When the winner one-stopped, 24 of 32 recommendations were also one-stops.
+- The starting compound matched in 31% of races.
+- The winner's compound sequence was in the model's top 3 in only 19% of races.
+- The average vote share of the best plan was 13%. The model sees most plans as close to equal.
+
+Part of the gap is fair: winners' "actual" plans include opportunistic stops under Safety Cars, which no pre-race plan contains. The bigger cause is the linear tyre model. It can't see that compound differences grow as fuel burns off (Buscombe's low-fuel "window" effect). Real teams start on the Medium; the model often prefers Soft or Hard starts. Fixing that in the tyre model is the main lever for better recommendations.
+
+Known limits of phase 5:
+- Tyre-set inventory (which new sets each car has left) is not in the public data, so plans assume any compound is available. For the same reason, rivals' tyre beliefs can't be back-calculated from the sets they kept.
+- Plans are fixed sequences with reactive SC stops. There is no mid-race re-planning.
+- Rival responses use expected points for everyone.
+
 ## Known limits of phase 1
 - `fuel_effect` combines fuel burn and track evolution, which both scale with race lap.
 - Deg is linear per compound within a race fit. Phase 3 adds a temperature slope and pooling, but not graining or cliffs.

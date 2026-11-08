@@ -374,6 +374,120 @@ def calibrate(
 
 
 @app.command()
+def strategy(
+    season: int = typer.Option(...),
+    round_: int = typer.Option(..., "--round"),
+    driver: str = typer.Option(..., help="Driver code, e.g. VER"),
+    objective: str = typer.Option("auto", help="auto | points | win | podium | top10 | position"),
+    sims: int = typer.Option(2000),
+    sc_sweep: bool = typer.Option(False, "--sc-sweep", help="Force a Safety Car on every lap (slower)"),
+    robustness: bool = typer.Option(True, help="Re-evaluate plans under alternative tyre beliefs"),
+    rivals: int = typer.Option(0, help="Iterate best responses among this many drivers around the focus driver"),
+    teammate: bool = typer.Option(False, help="Evaluate split strategies with the teammate"),
+    report: Optional[str] = typer.Option(None, help="Briefing path (default reports/strategy_<season>_<round>_<driver>.md)"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Strategy briefing for one driver: plan vote, objective, crossover, robustness, SC sweep, rivals, teammate."""
+    from pathlib import Path
+
+    from f1ml.features import build_features
+    from f1ml.sim import default_strategies, simulate as run
+    from f1ml.sim.params import PreraceContext, prerace_params
+    from f1ml.sim.replay import components_as_of
+    from f1ml.strategy import (auto_objective, best_response, crossover, deg_robustness, evaluate_plans,
+                               sc_sweep as run_sweep, sc_sweep_summary, strategy_candidates, team_split)
+    from f1ml.strategy.evaluate import DEFAULT_POINTS
+    from f1ml.strategy.report import write_briefing
+
+    cfg, store = _setup(verbose)
+    driver = driver.upper()
+    feats = build_features(store, include_upcoming=True)
+    g = feats[(feats["season"] == season) & (feats["round"] == round_)]
+    if g.empty or driver not in set(g["driver"]):
+        typer.echo(f"no pre-race data for {driver} at {season} R{round_}")
+        raise typer.Exit(1)
+    p = prerace_params(store, season, round_, PreraceContext(components_as_of(store, g["date"].iloc[0]), g))
+    try:
+        table = tuple(cfg.rules(season).sporting.points.race)
+    except KeyError:
+        table = DEFAULT_POINTS
+    base = default_strategies(p)
+    summary = run(p, base, n_sims=sims, seed=0).summary().set_index("driver")
+    why = "chosen by the user"
+    if objective == "auto":
+        objective, why = auto_objective(p, driver, summary.loc[driver])
+    cands = strategy_candidates(p)
+    ev = evaluate_plans(p, base, driver, cands, objective, n_sims=sims, points_table=table)
+    k = p.drivers.index(driver)
+    ctx = {"grid": f"P{int(p.grid[k])}", "objective": f"{objective} ({why})",
+           "baseline": f"P(win) {summary.loc[driver, 'p_win']:.2f}, P(podium) {summary.loc[driver, 'p_podium']:.2f}, "
+                       f"expected position {summary.loc[driver, 'exp_pos']:.1f}",
+           "track inputs": f"{p.laps} laps, green pit loss {p.pit_loss_s[0]:.1f} s, deg S/M/H "
+                           f"{p.deg_s.round(3).tolist()} s/lap, 50% pass threshold {-p.pass_a / p.pass_b:.2f} s/lap"}
+    typer.echo("\n".join(f"{a}: {b}" for a, b in ctx.items()))
+    typer.echo(ev.table.head(8).round(3).to_string(index=False))
+    cx = crossover(p)
+    typer.echo("crossover:\n" + (cx.round(3).to_string(index=False) if len(cx) else "  none in range"))
+    from f1ml.sim.strategy import plan_text
+    by_text = {plan_text(c, p.compounds): c for c in cands}
+    shortlist = [by_text[t] for t in list(ev.table["plan"])[:5]]
+    rob = deg_robustness(p, base, driver, shortlist, objective, n_sims=max(500, sims // 2)) if robustness else None
+    if rob is not None:
+        typer.echo("tyre-model regret:\n" + rob.round(3).to_string())
+    sw = None
+    if sc_sweep:
+        sw = sc_sweep_summary(run_sweep(p, base, driver, shortlist[:4], objective, n_sims=200))
+        typer.echo("SC on every lap:\n" + sw.round(3).to_string())
+    rv = None
+    if rivals:
+        order = list(summary.sort_values("exp_pos").index)
+        i = order.index(driver)
+        near = order[max(0, i - rivals // 2): max(0, i - rivals // 2) + rivals]
+        rv = best_response(p, base, near, n_sims=max(400, sims // 4))
+        typer.echo("best responses:\n" + rv.round(3).to_string(index=False))
+    tm = None
+    if teammate:
+        team = g.set_index("driver")["team"]
+        mates = [d for d in team.index if team[d] == team[driver] and d != driver]
+        if mates:
+            tm = team_split(p, base, driver, mates[0], shortlist[:4], n_sims=max(500, sims // 2), points_table=table)
+            typer.echo("teammate split:\n" + tm.head(6).round(3).to_string(index=False))
+    path = Path(report) if report else cfg.root / "reports" / f"strategy_{season}_{round_:02d}_{driver}.md"
+    if not path.is_absolute():
+        path = cfg.root / path
+    write_briefing(path, f"{driver}, {season} round {round_}", ctx, ev, cx, rob, sw, rv, tm)
+    typer.echo(f"briefing: {path}")
+
+
+@app.command("strategy-check")
+def strategy_check_cmd(
+    from_: int = typer.Option(2024, "--from"),
+    to: int = typer.Option(2026, "--to"),
+    sims: int = typer.Option(600),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """What the pre-race strategy layer would have recommended to each winner vs what they ran."""
+    from f1ml.strategy.check import strategy_check
+
+    _, store = _setup(verbose)
+    df = strategy_check(store, list(range(from_, to + 1)), n_sims=sims,
+                        progress=(lambda r: typer.echo(f"  {r}")) if verbose else None)
+    store.write_table(df, "features", "strategy_check")
+    ok = df[df.get("skipped").isna()] if "skipped" in df else df
+    typer.echo(f"{len(ok)} dry races ({len(df) - len(ok)} skipped)")
+    for c in ("same_stops", "same_start_compound", "same_sequence"):
+        typer.echo(f"  {c}: {ok[c].mean():.2f}")
+    typer.echo(f"  actual sequence in recommended top 3: {(ok['actual_sequence_rank'] <= 3).mean():.2f}")
+    typer.echo(pd_crosstab(ok))
+
+
+def pd_crosstab(df):
+    import pandas as pd
+
+    return "stops (rows = actual, cols = recommended):\n" + pd.crosstab(df["actual_stops"], df["recommended_stops"]).to_string()
+
+
+@app.command()
 def query(sql: str, verbose: bool = typer.Option(False, "-v")):
     """Run SQL over the stored tables (views: raw_laps, clean_laps, features_fit_params, ...)."""
     _, store = _setup(verbose)

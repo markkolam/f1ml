@@ -118,7 +118,8 @@ def _sig(z):
 
 
 def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n_sims: int = 2000,
-             seed: int = 0, overrides: Overrides | None = None, stop_jitter: int = 2) -> SimResult:
+             seed: int = 0, overrides: Overrides | None = None, stop_jitter: int = 2,
+             exact_cars: frozenset[int] = frozenset()) -> SimResult:
     """Run `n_sims` races. `strategies` is one Strategy per car, or per car a list of
     candidate strategies (one is drawn per simulation, uniformly)."""
     rng = np.random.default_rng(seed)
@@ -134,12 +135,18 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
     comp = np.zeros((N, C), dtype=np.int32)
     for c, st in enumerate(strategies):
         cands = st if isinstance(st, list) else [st]
-        pick = rng.integers(len(cands), size=N)
+        # plan choice and stop-lap jitter use a per-car stream, so changing one car's plan does
+        # not reshuffle the race draws (common random numbers when comparing plans)
+        prng = np.random.default_rng([seed, 7919, c])
+        pick = prng.integers(len(cands), size=N)
         for ci, s in enumerate(cands):
             m = pick == ci
             comp[m, c] = s.start_compound
             for k, (lap, cmpd) in enumerate(s.stops):
-                jit = rng.integers(-stop_jitter, stop_jitter + 1, size=m.sum()) if stop_jitter else 0
+                # cars in exact_cars run their plan to the lap (a plan being evaluated); others
+                # get +-stop_jitter laps so the field does not stop in lockstep
+                jit = prng.integers(-stop_jitter, stop_jitter + 1, size=m.sum()) \
+                    if stop_jitter and c not in exact_cars else 0
                 stop_lap[m, c, k] = np.clip(lap + jit, 2, L - 1)
                 stop_cmp[m, c, k] = cmpd
     # keep each car's stops ordered after jitter
@@ -161,11 +168,15 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
     remaining = np.zeros(N, np.int32)
     since_restart = np.full(N, 99)
 
-    def draw_type(m):
-        types = np.array(list(p.type_share.keys()))
-        probs = np.array(list(p.type_share.values()), float)
-        t = rng.choice(types, size=m.sum(), p=probs / probs.sum())
-        dur = np.array([rng.choice(p.durations[tt]) for tt in t])
+    types = np.array(list(p.type_share.keys()))
+    cum = np.cumsum(np.array(list(p.type_share.values()), float))
+    cum = cum / cum[-1]
+
+    def draw_type(m, ut, ud):
+        """Type and duration for new neutralisations, from pre-drawn uniforms (fixed draw count)."""
+        t = types[np.minimum(np.searchsorted(cum, ut[m], side="right"), len(types) - 1)]
+        dur = np.array([p.durations[tt][min(int(u * len(p.durations[tt])), len(p.durations[tt]) - 1)]
+                        for tt, u in zip(t, ud[m])], dtype=np.int32)
         return t, dur
 
     # ---------------- lap 1 (start)
@@ -176,26 +187,28 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
         slot = np.clip(grid.astype(int) - 1, 0, C - 1)
         gm = p.start_gain_mean[slot] if p.start_gain_mean is not None else np.zeros(C)
         gs = p.start_gain_sd[slot] if p.start_gain_sd is not None else np.full(C, 1.5)
-        score = grid[None, :] - (gm[None, :] + rng.normal(size=(N, C)) * gs[None, :]) + rng.normal(size=(N, C)) * 0.01
+        z_start, z_tie, z_lap1, u_out1 = (rng.normal(size=(N, C)), rng.normal(size=(N, C)),
+                                          rng.normal(size=(N, C)), rng.random((N, C)))
+        score = grid[None, :] - (gm[None, :] + z_start * gs[None, :]) + z_tie * 0.01
         rank = np.argsort(np.argsort(score, axis=1), axis=1)                 # 0 = leader after lap 1
         lap1 = p.ref_lap_s + p.lap1_extra_s + p.deg_s[comp] + p.base_s[comp]
-        T = lap1 + p.concertina_s * rank / max(C - 1, 1) + rng.normal(size=(N, C)) * p.lap_noise_s
+        T = lap1 + p.concertina_s * rank / max(C - 1, 1) + z_lap1 * p.lap_noise_s
         if p.p_out_lap1 is not None:
-            out1 = rng.random((N, C)) < p.p_out_lap1[slot][None, :]
-            retired |= out1
+            retired |= u_out1 < p.p_out_lap1[slot][None, :]
     retired |= ~np.isfinite(T)           # replay: cars that never completed lap 1
     age[:] = 1
     laps_done[~retired] = 1
     T[retired] = np.inf
 
     # lap-1 neutralisation
+    u1, ut1, ud1 = rng.random(N), rng.random(N), rng.random(N)
     if o.neutral is not None:
         neutral[:, 1] = o.neutral[1]
     else:
         z = p.hz_intercept + p.hz_lap1 + p.hz_frac / L
-        ev = rng.random(N) < _sig(z)
+        ev = u1 < _sig(z)
         if ev.any():
-            t, d = draw_type(ev)
+            t, d = draw_type(ev, ut1, ud1)
             state[ev], remaining[ev] = t, d
             neutral[ev, 1] = t
     if o.neutral is not None:
@@ -203,6 +216,11 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
 
     # ---------------- laps 2..L
     for lap in range(2, L + 1):
+        # every random number this lap is drawn here, in fixed amounts, so two runs that differ
+        # only in one car's plan see the same race (common random numbers)
+        u_haz, u_type, u_dur = rng.random(N), rng.random(N), rng.random(N)
+        z_lap, z_loss = rng.normal(size=(N, C)), rng.normal(size=(N, C))
+        u_pass, u_dnf = rng.random((N, C)), rng.random((N, C))
         # 1. neutralisation state for this lap
         if o.neutral is not None:
             prev = state.copy()
@@ -218,9 +236,9 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
             # the 1st and 2nd laps *after* it, i.e. since_restart 0 or 1 at draw time
             z = (p.hz_intercept + p.hz_restart * (since_restart <= 1)
                  + p.hz_pit * act + p.hz_late * (lap > 0.8 * L) + p.hz_frac * lap / L)
-            ev = green & (prev == GREEN) & (rng.random(N) < _sig(z))
+            ev = green & (prev == GREEN) & (u_haz < _sig(z))
             if ev.any():
-                t, d = draw_type(ev)
+                t, d = draw_type(ev, u_type, u_dur)
                 state[ev], remaining[ev] = t, d
         neutral[:, lap] = state
         restart_now = (prev != GREEN) & (state == GREEN)
@@ -243,7 +261,7 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
 
         # 3. lap times
         exp_t = (p.ref_lap_s + pace + p.base_s[comp] + p.deg_s[comp] * (age + 1) - p.fuel_s_per_lap * (lap - 1))
-        t = exp_t + rng.normal(size=(N, C)) * p.lap_noise_s
+        t = exp_t + z_lap * p.lap_noise_s
         order = np.argsort(T, axis=1)
         Ts = np.take_along_axis(T, order, 1)
         gap_ahead = np.empty_like(T)
@@ -254,7 +272,7 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
         t = np.where(st == VSC, np.maximum(t, p.ref_lap_s * p.vsc_factor), t)
         t = np.where((st == SC) | (st == RED), p.ref_lap_s * p.sc_factor, t)
         loss = np.select([st == GREEN, st == VSC], [p.pit_loss_s[GREEN], p.pit_loss_s[VSC]], p.pit_loss_s[SC])
-        loss = loss + rng.normal(size=(N, C)) * p.pit_loss_sd_s
+        loss = loss + z_loss * p.pit_loss_sd_s
         t = t + np.where(pit & ~free_change, np.broadcast_to(loss, (N, C)), 0.0)
 
         Tc = T + t
@@ -275,7 +293,7 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
                     continue
                 delta = exp_k[ar, j] - exp_k[ar, i]
                 pp = np.where(pi & pj, 0.0, _sig(p.pass_a + p.pass_b * delta + shift[i]))
-                passed = rng.random(N) < pp
+                passed = u_pass[ar, i] < pp       # the attacker's own uniform this lap
                 new_i = np.where(passed, np.minimum(ti, tj - 0.2), np.maximum(ti, tj + p.min_gap_s))
                 Tadj[ar, i] = np.where(reach, new_i, ti)
             Tc = np.where(green_rows[:, None], Tadj, Tc)
@@ -302,7 +320,7 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
         if o.retire_lap is not None:
             out = alive & (lap > np.asarray(o.retire_lap)[None, :])
         else:
-            out = alive & (rng.random((N, C)) < dnf[None, :])
+            out = alive & (u_dnf < dnf[None, :])
         retired |= out
         Tc[retired] = np.inf
         laps_done = np.where(retired, laps_done, lap)
