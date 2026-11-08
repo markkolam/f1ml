@@ -20,7 +20,8 @@ COMPOUND_PACE = {"SOFT": -0.5, "MEDIUM": 0.0, "HARD": 0.4}  # compound offset (a
 
 
 def synthetic_race(n_drivers: int = 12, n_laps: int = 50, seed: int = 0, sc_laps=(20, 21, 22),
-                   noise: float = 0.12, compound_offsets: bool = False) -> tuple[pd.DataFrame, dict]:
+                   noise: float = 0.12, compound_offsets: bool = False,
+                   strategies=None) -> tuple[pd.DataFrame, dict]:
     """Laps in the f1ml `laps` contract (without keys). One stop per car, mixed strategies.
 
     With compound_offsets=False every compound has the same base pace, so the
@@ -29,7 +30,7 @@ def synthetic_race(n_drivers: int = 12, n_laps: int = 50, seed: int = 0, sc_laps
     rng = np.random.default_rng(seed)
     drivers = [f"D{i:02d}" for i in range(n_drivers)]
     offsets = {d: 90.0 + 0.15 * i for i, d in enumerate(drivers)}
-    strategies = [("MEDIUM", "HARD"), ("SOFT", "HARD"), ("HARD", "MEDIUM"), ("SOFT", "MEDIUM")]
+    strategies = strategies or [("MEDIUM", "HARD"), ("SOFT", "HARD"), ("HARD", "MEDIUM"), ("SOFT", "MEDIUM")]
     rows = []
     for i, d in enumerate(drivers):
         c1, c2 = strategies[i % len(strategies)]

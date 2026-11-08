@@ -1,6 +1,6 @@
 # Backtest report
 
-Generated 2026-11-03 19:59 UTC. Walk-forward: each race is predicted by a model trained only on earlier races (plus that weekend's practice, qualifying and sprint).
+Generated 2026-11-08 15:09 UTC. Walk-forward: each race is predicted by a model trained only on earlier races (plus that weekend's practice, qualifying and sprint).
 
 Features: grid_pos, pit_lane_start, quali_pos, quali_gap_pct, teammate_quali_gap_pct, longrun_gap_pct, n_long_runs, is_sprint_weekend, sprint_pos, sprint_pace_pct, race_pace_ewm, team_race_pace_ewm, quali_gap_ewm, finish_ewm, points_ewm, team_dnf_rate, n_prev_races, track_grid_finish_rho, track_mean_places_changed, track_sc_share, track_n_prev, races_into_era.
 
@@ -9,8 +9,8 @@ Features: grid_pos, pit_lane_start, quali_pos, quali_gap_pct, teammate_quali_gap
 | model | races | spearman | winner_logloss | brier_win | brier_podium | winner_hit | top3_overlap | mae_pos |
 |---|---|---|---|---|---|---|---|---|
 | grid | 66 | 0.683 | 1.367 | 0.029 | 0.067 | 0.591 | 2.045 | 3.192 |
-| lgbm | 66 | 0.705 | 1.317 | 0.030 | 0.064 | 0.561 | 2.015 | 2.970 |
-| sim | 66 | 0.686 | 1.369 | 0.029 | 0.064 | 0.561 | 2.015 | 3.143 |
+| lgbm | 66 | 0.706 | 1.311 | 0.030 | 0.064 | 0.561 | 2.061 | 2.976 |
+| sim | 66 | 0.688 | 1.382 | 0.029 | 0.064 | 0.576 | 2.076 | 3.136 |
 
 ## By season
 
@@ -19,12 +19,12 @@ Features: grid_pos, pit_lane_start, quali_pos, quali_gap_pct, teammate_quali_gap
 | grid | 2024 | 23 | 0.735 | 1.702 | 0.038 | 0.073 | 0.435 | 2.000 | 2.908 |
 | grid | 2025 | 24 | 0.652 | 1.129 | 0.026 | 0.062 | 0.667 | 2.250 | 3.170 |
 | grid | 2026 | 19 | 0.657 | 1.261 | 0.023 | 0.066 | 0.684 | 1.842 | 3.565 |
-| lgbm | 2024 | 23 | 0.755 | 1.741 | 0.039 | 0.074 | 0.391 | 1.870 | 2.622 |
-| lgbm | 2025 | 24 | 0.669 | 1.041 | 0.027 | 0.056 | 0.625 | 2.167 | 3.063 |
-| lgbm | 2026 | 19 | 0.690 | 1.152 | 0.024 | 0.062 | 0.684 | 2.000 | 3.273 |
-| sim | 2024 | 23 | 0.763 | 1.968 | 0.036 | 0.070 | 0.522 | 1.957 | 2.715 |
-| sim | 2025 | 24 | 0.643 | 0.970 | 0.027 | 0.058 | 0.542 | 2.167 | 3.244 |
-| sim | 2026 | 19 | 0.646 | 1.148 | 0.024 | 0.064 | 0.632 | 1.895 | 3.533 |
+| lgbm | 2024 | 23 | 0.761 | 1.722 | 0.038 | 0.073 | 0.435 | 1.957 | 2.626 |
+| lgbm | 2025 | 24 | 0.668 | 1.035 | 0.027 | 0.056 | 0.583 | 2.250 | 3.070 |
+| lgbm | 2026 | 19 | 0.687 | 1.163 | 0.024 | 0.062 | 0.684 | 1.947 | 3.282 |
+| sim | 2024 | 23 | 0.762 | 1.969 | 0.035 | 0.070 | 0.522 | 2.000 | 2.715 |
+| sim | 2025 | 24 | 0.644 | 0.980 | 0.028 | 0.058 | 0.542 | 2.208 | 3.235 |
+| sim | 2026 | 19 | 0.652 | 1.178 | 0.024 | 0.063 | 0.684 | 2.000 | 3.520 |
 
 ## Metrics
 
@@ -40,25 +40,25 @@ Features: grid_pos, pit_lane_start, quali_pos, quali_gap_pct, teammate_quali_gap
 
 | index | gain_% |
 |---|---|
-| grid_pos | 32.700 |
-| quali_pos | 20.600 |
-| quali_gap_pct | 17.200 |
-| teammate_quali_gap_pct | 4.700 |
-| points_ewm | 4.000 |
-| quali_gap_ewm | 3.900 |
-| race_pace_ewm | 3.000 |
-| n_prev_races | 2.100 |
-| finish_ewm | 2.000 |
-| team_race_pace_ewm | 1.800 |
+| grid_pos | 35.200 |
+| quali_pos | 20.500 |
+| quali_gap_pct | 13.200 |
+| teammate_quali_gap_pct | 5.100 |
+| quali_gap_ewm | 4.800 |
+| race_pace_ewm | 3.600 |
+| points_ewm | 3.200 |
+| team_race_pace_ewm | 2.600 |
+| n_prev_races | 2.300 |
+| track_grid_finish_rho | 1.700 |
 | track_mean_places_changed | 1.600 |
-| track_grid_finish_rho | 1.300 |
-| team_dnf_rate | 1.200 |
-| sprint_pace_pct | 1.200 |
-| races_into_era | 1.200 |
-| longrun_gap_pct | 0.400 |
-| track_sc_share | 0.400 |
+| finish_ewm | 1.400 |
+| team_dnf_rate | 1.100 |
+| races_into_era | 1.000 |
+| sprint_pace_pct | 1.000 |
+| longrun_gap_pct | 0.500 |
+| track_sc_share | 0.500 |
+| sprint_pos | 0.200 |
 | n_long_runs | 0.200 |
-| track_n_prev | 0.200 |
-| sprint_pos | 0.100 |
+| track_n_prev | 0.100 |
 | is_sprint_weekend | 0.000 |
 | pit_lane_start | 0.000 |

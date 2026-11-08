@@ -11,6 +11,12 @@ Inputs are the phase-1 per-race fits (deg per compound with standard errors).
    tracks are shrunk toward their era x compound mean (empirical Bayes).
    Prediction for a new race at temperature T: post_mean + gamma * (T - ref_temp).
 
+3. Fuel dependence: each race fit also estimates how much a compound's pace
+   advantage changes between an empty and a full tank (`compound_fuel`) and how
+   much wear changes with fuel load (`deg_fuel`). These are pooled the same way,
+   so the simulator can make the Soft "worth nothing at lap 5 and everything at
+   lap 50" (Buscombe) if the data agree.
+
 Compound labels are used because Pirelli C-numbers are not configured yet
 (config/pirelli/); once they are, swap `compound` for `c_number` in the keys.
 Known gaps: no cliff/graining term yet (deg is linear in age within a stint).
@@ -31,7 +37,8 @@ DRY = ("SOFT", "MEDIUM", "HARD")
 def race_compound_estimates(store: Store, rd: RaceData) -> pd.DataFrame:
     """Per race x compound: deg, its SE, base pace vs MEDIUM, laps used, mean track temp."""
     fp = store.query("""SELECT season, round, param, value, se FROM features_fit_params
-                        WHERE session='R' AND (param LIKE 'deg:%' OR param LIKE 'compound_offset:%')""")
+                        WHERE session='R' AND (param LIKE 'deg:%' OR param LIKE 'compound_offset:%'
+                                               OR param LIKE 'compound_fuel:%')""")
     fp[["kind", "compound"]] = fp["param"].str.split(":", n=1, expand=True)
     fp = fp.merge(rd.events[["season", "round", "track_id", "era_id"]], on=["season", "round"])
     deg = fp[fp["kind"] == "deg"].rename(columns={"value": "deg", "se": "deg_se"})
@@ -43,6 +50,16 @@ def race_compound_estimates(store: Store, rd: RaceData) -> pd.DataFrame:
         # independent-errors approximation for the SE of a difference
         base_se=np.sqrt(base["se"].fillna(0) ** 2 + key.map(med["se"]).to_numpy() ** 2),
     )[["season", "round", "compound", "base_vs_medium", "base_se"]]
+    bf = fp[fp["kind"] == "compound_fuel"][["season", "round", "compound", "value", "se"]]
+    if len(bf):
+        bmed = bf[bf["compound"] == "MEDIUM"].set_index(["season", "round"])
+        bkey = bf.set_index(["season", "round"]).index
+        bf = bf.assign(base_fuel_vs_medium=bf["value"] - bkey.map(bmed["value"]).to_numpy(),
+                       base_fuel_se=np.sqrt(bf["se"].fillna(0) ** 2 + bkey.map(bmed["se"]).to_numpy() ** 2),
+                       )[["season", "round", "compound", "base_fuel_vs_medium", "base_fuel_se"]]
+        base = base.merge(bf, on=["season", "round", "compound"], how="left")
+    else:
+        base = base.assign(base_fuel_vs_medium=np.nan, base_fuel_se=np.nan)
     temp = rd.laps[rd.laps["is_clean"]].groupby(["season", "round"])["track_temp"].mean().rename("track_temp")
     used = rd.laps[rd.laps["is_clean_free_air"]].groupby(["season", "round", "compound"]).size().rename("n_laps")
     # Mixed-weather races (any intermediate/wet running) are left out: a drying track
@@ -106,6 +123,25 @@ def fit_tyre(store: Store, rd: RaceData) -> dict[str, pd.DataFrame]:
         base[["track_id", "era_id", "compound", "base_raw", "base_post", "base_post_sd"]],
         on=["track_id", "era_id", "compound"], how="left")
     table["ref_temp"] = table["era_id"].map(ref)
+
+    # fuel dependence of compound pace (vs MEDIUM) and of wear
+    nonmed = est[(est["compound"] != "MEDIUM") & est["base_fuel_vs_medium"].notna()]
+    if len(nonmed):
+        bf = hierarchical(nonmed, "base_fuel_vs_medium", "base_fuel_se", ["track_id", "era_id", "compound"],
+                          ["era_id", "compound"]).rename(columns={
+                              "post_mean": "base_fuel_post", "post_sd": "base_fuel_post_sd",
+                              "raw_mean": "base_fuel_raw", "parent_mean": "base_fuel_era_mean"})
+        table = table.merge(bf[["track_id", "era_id", "compound", "base_fuel_raw", "base_fuel_post",
+                                "base_fuel_post_sd", "base_fuel_era_mean"]],
+                            on=["track_id", "era_id", "compound"], how="left")
+    df = store.query("""SELECT season, round, value AS deg_fuel, se AS deg_fuel_se FROM features_fit_params
+                        WHERE session='R' AND param='deg_fuel'""")
+    df = df.merge(est[["season", "round", "track_id", "era_id"]].drop_duplicates(), on=["season", "round"])
+    if len(df):
+        dfp = hierarchical(df, "deg_fuel", "deg_fuel_se", ["track_id", "era_id"], ["era_id"]).rename(columns={
+            "post_mean": "deg_fuel_post", "post_sd": "deg_fuel_post_sd", "parent_mean": "deg_fuel_era_mean"})
+        table = table.merge(dfp[["track_id", "era_id", "deg_fuel_post", "deg_fuel_post_sd", "deg_fuel_era_mean"]],
+                            on=["track_id", "era_id"], how="left")
     params = pd.DataFrame([{"param": "temp_gamma", "value": gamma, "se": gamma_se}]
                           + [{"param": f"ref_temp:{e}", "value": v, "se": np.nan} for e, v in ref.items()])
     return {"tyre_track": table, "tyre_params": params, "tyre_race_estimates": est}

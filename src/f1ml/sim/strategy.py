@@ -48,6 +48,28 @@ def stint_time(base: float, deg: float, n: np.ndarray | int) -> np.ndarray:
     return n * base + deg * n * (n + 1) / 2
 
 
+def stint_time_fuel(base: float, base_fuel: float, deg: float, deg_fuel: float, start, end, L: int) -> np.ndarray:
+    """Exact time of a stint over laps start+1..end with fuel-dependent compound pace and wear.
+
+    lap l: base + base_fuel * f(l) + (deg + deg_fuel * f(l)) * (l - start), f(l) = 1 - (l-1)/(L-1).
+    Uses prefix sums F(x) = sum f(l), G(x) = sum l f(l) for l = 1..x, in closed form.
+    """
+    s = np.asarray(start, float)
+    e = np.asarray(end, float)
+    k = 1.0 / max(L - 1, 1)
+
+    def F(x):  # sum_{l=1..x} (1 - (l-1)k)
+        return x - k * x * (x - 1) / 2
+
+    def G(x):  # sum_{l=1..x} l (1 - (l-1)k)
+        return x * (x + 1) / 2 - k * (x - 1) * x * (x + 1) / 3
+
+    n = e - s
+    sf = F(e) - F(s)
+    slf = (G(e) - G(s)) - s * sf
+    return n * base + base_fuel * sf + deg * n * (n + 1) / 2 + deg_fuel * slf
+
+
 def _stop_combos(L: int, n_stops: int, min_stint: int) -> np.ndarray:
     grid = np.arange(min_stint, L - min_stint + 1)
     combos = np.array(list(itertools.combinations(grid, n_stops)), dtype=int).reshape(-1, n_stops)
@@ -65,11 +87,13 @@ def candidate_plans(p: RaceParams, max_stops: int = 3, min_stint: int = 6, top: 
         combos = _stop_combos(L, n_stops, min_stint)
         if len(combos) == 0:
             continue
-        lens = np.diff(np.column_stack([np.zeros(len(combos), int), combos, np.full(len(combos), L)]), axis=1)
+        edges = np.column_stack([np.zeros(len(combos), int), combos, np.full(len(combos), L)])
+        bf = p.base_fuel_s if p.base_fuel_s is not None else np.zeros(len(p.compounds))
         for seq in itertools.product(dry, repeat=n_stops + 1):
             if len(set(seq)) < 2:
                 continue
-            t = sum(stint_time(p.base_s[c], p.deg_s[c], lens[:, k]) for k, c in enumerate(seq)) + n_stops * loss
+            t = sum(stint_time_fuel(p.base_s[c], bf[c], p.deg_s[c], p.deg_fuel_s, edges[:, k], edges[:, k + 1], L)
+                    for k, c in enumerate(seq)) + n_stops * loss
             i = int(np.argmin(t))
             found.append((float(t[i]), Strategy(seq[0], list(zip(map(int, combos[i]), seq[1:])))))
     found.sort(key=lambda x: x[0])

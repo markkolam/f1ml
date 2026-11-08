@@ -43,11 +43,15 @@ class RaceParams:
     pace_sd_s: np.ndarray               # (C,) uncertainty of that offset (drawn once per simulation)
     compounds: list[str]
     base_s: np.ndarray                  # (K,) compound pace when new, vs MEDIUM
-    deg_s: np.ndarray                   # (K,) s/lap per lap of tyre age
+    deg_s: np.ndarray                   # (K,) s/lap per lap of tyre age (on an empty tank)
     laps: int
     ref_lap_s: float                    # field-median lap time at lap 1 fuel on a new tyre
     fuel_s_per_lap: float
     lap_noise_s: float = 0.3
+    # fuel dependence (fuel fraction f: 1 on lap 1, 0 on the last lap):
+    # compound pace = base_s + base_fuel_s * f ; wear = deg_s + deg_fuel_s * f
+    base_fuel_s: np.ndarray | None = None   # (K,) change in compound pace from empty to full tank
+    deg_fuel_s: float = 0.0
     lap1_extra_s: float = 6.0           # standing start vs a flying lap
     concertina_s: float = 12.0          # first-to-last spread at the end of lap 1
     pit_loss_s: dict = field(default_factory=lambda: {GREEN: 22.0, VSC: 11.5, SC: 11.5})
@@ -191,7 +195,8 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
                                           rng.normal(size=(N, C)), rng.random((N, C)))
         score = grid[None, :] - (gm[None, :] + z_start * gs[None, :]) + z_tie * 0.01
         rank = np.argsort(np.argsort(score, axis=1), axis=1)                 # 0 = leader after lap 1
-        lap1 = p.ref_lap_s + p.lap1_extra_s + p.deg_s[comp] + p.base_s[comp]
+        bf0 = p.base_fuel_s if p.base_fuel_s is not None else np.zeros(K)
+        lap1 = p.ref_lap_s + p.lap1_extra_s + (p.deg_s[comp] + p.deg_fuel_s) + p.base_s[comp] + bf0[comp]
         T = lap1 + p.concertina_s * rank / max(C - 1, 1) + z_lap1 * p.lap_noise_s
         if p.p_out_lap1 is not None:
             retired |= u_out1 < p.p_out_lap1[slot][None, :]
@@ -260,7 +265,10 @@ def simulate(p: RaceParams, strategies: list[Strategy] | list[list[Strategy]], n
         pit_any = pit | free_change
 
         # 3. lap times
-        exp_t = (p.ref_lap_s + pace + p.base_s[comp] + p.deg_s[comp] * (age + 1) - p.fuel_s_per_lap * (lap - 1))
+        fuel_frac = 1.0 - (lap - 1) / max(L - 1, 1)
+        bf = p.base_fuel_s if p.base_fuel_s is not None else np.zeros(K)
+        exp_t = (p.ref_lap_s + pace + p.base_s[comp] + bf[comp] * fuel_frac
+                 + (p.deg_s[comp] + p.deg_fuel_s * fuel_frac) * (age + 1) - p.fuel_s_per_lap * (lap - 1))
         t = exp_t + z_lap * p.lap_noise_s
         order = np.argsort(T, axis=1)
         Ts = np.take_along_axis(T, order, 1)

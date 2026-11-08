@@ -115,3 +115,27 @@ def test_new_era_falls_back_to_the_previous_era():
     assert _era(df, "2026_active_aero") == "2022_ground_effect"     # rule reset: start from last era
     assert _track_row(df, "monza", "2026_active_aero")["v"] == 2
     assert _track_row(df, "madring", "2026_active_aero") is None
+
+
+def test_fuel_aware_stint_time_matches_lap_by_lap_sum():
+    from f1ml.sim.strategy import stint_time_fuel
+
+    L = 56
+
+    def brute(b, bf, d, dg, s, e):
+        return sum(b + bf * (1 - (l - 1) / (L - 1)) + (d + dg * (1 - (l - 1) / (L - 1))) * (l - s)
+                   for l in range(s + 1, e + 1))
+
+    for args in [(0.3, 0.5, 0.05, 0.02, 0, 20), (-0.4, 0.6, 0.09, -0.01, 20, 56), (0.0, 0.0, 0.06, 0.0, 10, 30)]:
+        assert stint_time_fuel(*args[:4], args[4], args[5], L) == pytest.approx(brute(*args))
+
+
+def test_engine_applies_fuel_dependent_compound_pace():
+    # soft gains 0.6 s on an empty tank, nothing on a full one
+    p = params(C=1, laps=21, base_s=np.array([-0.6, 0.0, 0.0]), deg_s=np.zeros(3), fuel_s_per_lap=0.0,
+               base_fuel_s=np.array([0.6, 0.0, 0.0]))
+    t_soft = simulate(p, [Strategy(0, [(20, 1)])], n_sims=1, seed=0, stop_jitter=0).time[0, 0]
+    t_med = simulate(p, [Strategy(1, [(20, 0)])], n_sims=1, seed=0, stop_jitter=0).time[0, 0]
+    # soft for laps 1-20 (f from 1 to 0.05) vs medium; last lap swaps compounds (f = 0)
+    gain = sum(-0.6 + 0.6 * (1 - (l - 1) / 20) for l in range(1, 21)) - (-0.6)
+    assert t_soft - t_med == pytest.approx(gain, abs=1e-6)

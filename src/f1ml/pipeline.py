@@ -164,10 +164,10 @@ class Pipeline:
             info: dict = {}
             if code in RACE_CODES:
                 n = s.normalisation
+                total = man["steps"][f"ingest:{code}"].get("total_laps")
                 fit = fit_race(tagged, fuel_prior=(n.fuel_effect_prior_mean, n.fuel_effect_prior_sd),
                                deg_prior=(n.deg_prior_mean, n.deg_prior_sd), huber_k=n.huber_k,
-                               min_laps=n.min_laps_for_fit)
-                total = man["steps"][f"ingest:{code}"].get("total_laps")
+                               min_laps=n.min_laps_for_fit, race_laps=total)
                 tagged = apply_corrections(tagged, fit, total)
                 if fit is not None:
                     keys = {"season": ev.season, "round": ev.round, "session": code}

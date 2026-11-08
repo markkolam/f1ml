@@ -54,18 +54,28 @@ def load_race_data(store: Store, as_of: pd.Timestamp | None = None, session: str
     off = fp[fp["param"].str.startswith("offset:")].copy()
     off["driver"] = off["param"].str.slice(len("offset:"))
     fits = off.rename(columns={"value": "offset"})[["season", "round", "driver", "offset"]]
-    comp = fp[fp["param"].str.startswith(("deg:", "compound_offset:"))].copy()
+    comp = fp[fp["param"].str.startswith(("deg:", "compound_offset:", "compound_fuel:"))].copy()
     comp[["kind", "compound"]] = comp["param"].str.split(":", n=1, expand=True)
     comp = comp.pivot_table(index=["season", "round", "compound"], columns="kind", values="value").reset_index()
-    comp = comp.rename(columns={"deg": "deg", "compound_offset": "base"})
-    glob = fp[fp["param"].isin(["fuel_effect", "reference_offset", "sigma"])].pivot_table(
+    comp = comp.rename(columns={"deg": "deg", "compound_offset": "base", "compound_fuel": "base_fuel"})
+    if "base_fuel" not in comp:
+        comp["base_fuel"] = 0.0
+    glob = fp[fp["param"].isin(["fuel_effect", "reference_offset", "sigma", "deg_fuel", "race_laps"])].pivot_table(
         index=["season", "round"], columns="param", values="value").reset_index()
+    for c in ("deg_fuel", "race_laps"):
+        if c not in glob:
+            glob[c] = np.nan
     fits = fits.merge(glob, on=["season", "round"], how="left")
     laps = laps.merge(comp, on=["season", "round", "compound"], how="left")
-    laps = laps.merge(fits[["season", "round", "driver", "offset", "fuel_effect", "reference_offset"]],
-                      on=["season", "round", "driver"], how="left")
-    # expected lap time (s, relative within the race): car + compound base + deg * age - fuel * lap
-    laps["expected_s"] = (laps["offset"] + laps["base"].fillna(0) + laps["deg"] * laps["tyre_life"]
+    laps = laps.merge(fits[["season", "round", "driver", "offset", "fuel_effect", "reference_offset",
+                            "deg_fuel", "race_laps"]], on=["season", "round", "driver"], how="left")
+    # fuel fraction: 1 on lap 1, 0 on the last lap
+    n_laps = laps["race_laps"].fillna(laps.groupby(["season", "round"])["lap_number"].transform("max"))
+    laps["fuel_frac"] = 1 - (laps["lap_number"] - 1) / (n_laps - 1).clip(lower=1)
+    # expected lap time (s, relative within the race): car + compound base (fuel-dependent)
+    # + deg * age (fuel-dependent) - fuel * lap
+    laps["expected_s"] = (laps["offset"] + laps["base"].fillna(0) + laps["base_fuel"].fillna(0) * laps["fuel_frac"]
+                          + (laps["deg"] + laps["deg_fuel"].fillna(0) * laps["fuel_frac"]) * laps["tyre_life"]
                           - laps["fuel_effect"] * (laps["lap_number"] - 1))
 
     results = q(f"""SELECT season, round, driver, team, position, grid_position, status, laps

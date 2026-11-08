@@ -1,12 +1,20 @@
 """Per-race joint fit of fuel(+track evolution), tyre degradation and car offsets.
 
-    lap_time = offset[driver] + base[compound] - fuel_effect * (lap - 1)
-               + deg[compound] * tyre_life + e
+    lap_time = offset[driver] + base[compound] + base_fuel[compound] * f - fuel_effect * (lap - 1)
+               + (deg[compound] + deg_fuel * f) * tyre_life + e
 
-`base[compound]` is each compound's pace when new, relative to the most-used
-compound (e.g. "the Hard is 0.6 s slower"). Without it, a compound's
-pace difference leaks into its deg estimate, because compounds are used at
-different fuel loads and race phases.
+with f the fuel fraction: 1 on lap 1, 0 on the last lap.
+
+`base[compound]` is each compound's pace when new *on an empty tank*, relative
+to the most-used compound (e.g. "the Hard is 0.6 s slower"). Without it, a
+compound's pace difference leaks into its deg estimate.
+
+`base_fuel[compound]` is how much that difference changes from an empty to a
+full tank. Buscombe: "On full tanks, deg and fuel cancel, and the three
+compounds collapse into one tyre ... The compound is worth nothing at lap 5 and
+everything at lap 50." If she is right, the Soft's base_fuel is positive (its
+advantage shrinks on heavy fuel). `deg_fuel` lets wear depend on fuel load too
+(more load, more energy into the tread; graining "on high fuel").
 
 fitted on clean, free-air, dry race laps by robust (Huber-IRLS) least squares,
 with weak Gaussian priors on fuel_effect and deg (Buscombe's typical ranges:
@@ -38,6 +46,9 @@ class FitResult:
     compound_offsets: dict[str, float]
     sigma: float
     n_laps: int
+    compound_fuel: dict[str, float] | None = None   # change in compound offset from empty to full tank
+    deg_fuel: float = 0.0                           # change in deg (s/lap per lap) from empty to full
+    race_laps: int | None = None
 
 
 def _solve(X, y, w, prior_rows, sigma):
@@ -66,6 +77,10 @@ def fit_race(
     min_laps: int = 60,
     iterations: int = 8,
     compound_prior_sd: float = 1.0,
+    fuel_interaction: bool = True,
+    compound_fuel_prior_sd: float = 0.5,
+    deg_fuel_prior_sd: float = 0.05,
+    race_laps: int | None = None,
 ) -> FitResult | None:
     dry = laps["compound"].isin(DRY_COMPOUNDS) & laps["tyre_life"].notna()
     method = "clean_free_air"
@@ -82,7 +97,11 @@ def fit_race(
     others = [c for c in compounds if c != ref_compound]
     n, kd, kc = len(data), len(drivers), len(compounds)
     ko = kd + 1 + kc  # first compound-offset column
-    X = np.zeros((n, ko + len(others)))
+    kf = ko + len(others)  # first compound x fuel column (then one deg x fuel column)
+    n_fuel = (len(others) + 1) if fuel_interaction else 0
+    X = np.zeros((n, kf + n_fuel))
+    N = int(race_laps or laps["lap_number"].max())
+    f = 1.0 - (data["lap_number"].to_numpy(float) - 1.0) / max(N - 1, 1)
     d_idx = data["driver"].astype(str).map({d: i for i, d in enumerate(drivers)}).to_numpy()
     X[np.arange(n), d_idx] = 1.0
     X[:, kd] = -(data["lap_number"].to_numpy(float) - 1.0)
@@ -91,10 +110,17 @@ def fit_race(
     comp = data["compound"].astype(str).to_numpy()
     for j, c in enumerate(others):
         X[:, ko + j] = (comp == c).astype(float)
+        if fuel_interaction:
+            X[:, kf + j] = (comp == c) * f
+    if fuel_interaction:
+        X[:, kf + len(others)] = data["tyre_life"].to_numpy(float) * f
     y = data["lap_time_s"].to_numpy(float)
 
     priors = [(kd, *fuel_prior)] + [(kd + 1 + i, *deg_prior) for i in range(kc)]
     priors += [(ko + j, 0.0, compound_prior_sd) for j in range(len(others))]
+    if fuel_interaction:
+        priors += [(kf + j, 0.0, compound_fuel_prior_sd) for j in range(len(others))]
+        priors += [(kf + len(others), 0.0, deg_fuel_prior_sd)]
     w = np.ones(n)
     sigma = max(np.std(y - np.median(y)), 0.3)
     for _ in range(iterations):
@@ -116,17 +142,25 @@ def fit_race(
     deg = {c: float(beta[kd + 1 + i]) for i, c in enumerate(compounds)}
     fuel = float(beta[kd])
     comp_off = {ref_compound: 0.0, **{c: float(beta[ko + j]) for j, c in enumerate(others)}}
+    comp_fuel = {ref_compound: 0.0, **{c: float(beta[kf + j]) for j, c in enumerate(others)}} \
+        if fuel_interaction else {c: 0.0 for c in compounds}
+    deg_fuel = float(beta[kf + len(others)]) if fuel_interaction else 0.0
 
     rows = [("fuel_effect", fuel, se[kd]), ("sigma", sigma, np.nan), ("reference_offset", ref, np.nan)]
     rows += [(f"deg:{c}", deg[c], se[kd + 1 + i]) for i, c in enumerate(compounds)]
     rows += [(f"compound_offset:{ref_compound}", 0.0, 0.0)]
     rows += [(f"compound_offset:{c}", comp_off[c], se[ko + j]) for j, c in enumerate(others)]
+    if fuel_interaction:
+        rows += [(f"compound_fuel:{ref_compound}", 0.0, 0.0)]
+        rows += [(f"compound_fuel:{c}", comp_fuel[c], se[kf + j]) for j, c in enumerate(others)]
+        rows += [("deg_fuel", deg_fuel, se[kf + len(others)]), ("race_laps", float(N), np.nan)]
     rows += [(f"offset:{d}", offsets[d], se[i]) for i, d in enumerate(drivers)]
     params = pd.DataFrame(rows, columns=["param", "value", "se"])
     params["n_laps"] = n
     params["method"] = method
     return FitResult(params=params, fuel_effect=fuel, offsets=offsets, deg=deg,
-                     compound_offsets=comp_off, sigma=float(sigma), n_laps=n)
+                     compound_offsets=comp_off, sigma=float(sigma), n_laps=n,
+                     compound_fuel=comp_fuel, deg_fuel=deg_fuel, race_laps=N)
 
 
 def apply_corrections(laps: pd.DataFrame, fit: FitResult | None, total_laps: int | None) -> pd.DataFrame:

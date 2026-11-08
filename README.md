@@ -103,8 +103,30 @@ Each component is fitted from race data per track and era. Thin evidence is pull
 
 `fit_components(store, as_of=date)` fits every component on races before a date, for walk-forward use in the race simulator (phase 4).
 
+### Fuel-dependent tyre model
+Buscombe: "On full tanks, deg and fuel cancel, and the three compounds collapse into one tyre ... The compound is worth nothing at lap 5 and everything at lap 50." The race fit and tyre component now include it:
+
+    lap time = car + base[c] + base_fuel[c] * f - fuel * (lap - 1) + (deg[c] + deg_fuel * f) * tyre age
+
+Here f is the fuel fraction, 1 on lap 1 and 0 on the last lap. `base[c]` is the compound's pace on an empty tank. `base_fuel[c]` is how much its advantage over the Medium changes by a full tank. The simulator and the plan search use the same formula; the plan search uses an exact closed-form stint time.
+
+What the data say (2023 - Mexico 2026):
+
+| | Soft vs Medium, empty tank | Change to a full tank |
+|---|---|---|
+| Mexico 2026 | -0.58 s | +0.68 |
+| Austin 2026 | -0.46 s | +0.60 |
+
+- At those two tracks the Soft's advantage nearly vanishes on full fuel, as she says. Her figure for Mexico is "0.57 seconds a lap faster than the Medium at equal age".
+- Across all races the effect points the same way but is noisy: the Soft's fuel term is positive in 58% of race estimates.
+- The 2026 era mean is +0.14 and the 2022-25 era mean is +0.05.
+- The Hard shows no consistent effect.
+- Wear is slightly higher on heavy fuel (`deg_fuel` about +0.01).
+
+The effect is only identifiable when a compound is run at different fuel loads at different ages. Within one race that is often weak, so the per-track values lean on pooling.
+
 Known limits of phase 3:
-- There is no tyre cliff or graining term yet; deg is linear in tyre age within a stint.
+- There is no tyre cliff or graining term yet; deg is linear in tyre age within a stint (with the fuel terms above).
 - Compounds are keyed by label until Pirelli C-numbers are configured.
 - Pass thresholds use the expected (race-average) pace gap.
 
@@ -136,14 +158,14 @@ Results (2024 - Mexico 2026):
   - the simulated favourite won 76% of the time;
   - 70% of actual positions fell inside the simulated 10-90% range (ideal ~80%, so the ranges are a little narrow);
   - median gap error 10 s, with the worst races decided by collisions (Austria 2024, Canada 2025).
-- **Pre-race backtest, 66 races** (`reports/backtest_sim.md`): `sim` scores winner log loss 1.369 against `lgbm`'s 1.317 and rank correlation 0.686 against 0.705.
+- **Pre-race backtest, 66 races** (`reports/backtest_sim.md`, with the fuel-dependent tyre model): `sim` scores winner log loss 1.382 against `lgbm`'s 1.311 and rank correlation 0.688 against 0.706. With the linear tyre model it was 1.369 against 1.317.
   - It is better than `lgbm` on winners in 2025 and 2026, and worse in 2024, when it only had 2023 history.
   - It does **not** replace `lgbm` as the default predictor. It is the engine for strategy and what-if questions (phase 5).
 
 Known limits of phase 4:
 - Lapped traffic and blue flags are not modelled.
 - Wet and mixed races are skipped in replays.
-- The linear tyre model cannot see the low-fuel grip advantage Buscombe describes ("the compound is worth nothing at lap 5 and everything at lap 50").
+- Compound pace depends on fuel load only linearly. There is no "window" term from telemetry (share of the lap at 70-150 km/h), because OpenF1 car data isn't ingested.
 - Other cars do not react to a changed strategy in `whatif`.
 
 ## Phase 5: strategy layer
@@ -164,13 +186,19 @@ f1ml strategy-check --from 2024 --to 2026                                    # r
 | Rivals | Iterated best responses among the drivers around the focus driver | "build your race on what your competitors will do" |
 | Teammate | All plan pairs for the two cars: team points and P(either wins), split vs same plan | "teams that pair strategies win championships" |
 
-History check (`f1ml strategy-check`, 59 dry races 2024 - Mexico 2026): the pre-race recommendation for the eventual winner agrees only loosely with what they ran.
-- The number of stops matched in 54% of races. When the winner one-stopped, 24 of 32 recommendations were also one-stops.
-- The starting compound matched in 31% of races.
-- The winner's compound sequence was in the model's top 3 in only 19% of races.
-- The average vote share of the best plan was 13%. The model sees most plans as close to equal.
+History check (`f1ml strategy-check`, 59 dry races 2024 - Mexico 2026): the pre-race recommendation for each eventual winner, compared with what they ran.
 
-Part of the gap is fair: winners' "actual" plans include opportunistic stops under Safety Cars, which no pre-race plan contains. The bigger cause is the linear tyre model. It can't see that compound differences grow as fuel burns off (Buscombe's low-fuel "window" effect). Real teams start on the Medium; the model often prefers Soft or Hard starts. Fixing that in the tyre model is the main lever for better recommendations.
+| | Linear tyre model | Fuel-dependent tyre model |
+|---|---|---|
+| Starting compound matches | 31% | **47%** |
+| Exact compound sequence matches | 10% | **19%** |
+| Winner's sequence in the top 3 | 19% | **31%** |
+| Number of stops matches | 54% | 51% |
+| Best plan's average vote share | 13% | 16% |
+
+The fuel-dependent tyre model made recommendations noticeably more realistic. The replay check was unchanged (rank correlation 0.90).
+
+Agreement is still partial. Winners' "actual" plans include opportunistic Safety Car stops that no pre-race plan contains. Real teams also start on the Medium more often: 48 of 59 winners did, against 29 of the model's recommendations.
 
 Known limits of phase 5:
 - Tyre-set inventory (which new sets each car has left) is not in the public data, so plans assume any compound is available. For the same reason, rivals' tyre beliefs can't be back-calculated from the sets they kept.

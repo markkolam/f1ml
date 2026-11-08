@@ -100,9 +100,42 @@ def test_window_stats():
 def test_fit_separates_compound_pace_from_deg():
     from tests.conftest import COMPOUND_PACE
 
+    # each compound is run in only one phase of this race, so fuel terms are not identifiable
+    # here (they would trade off against base pace): test the model without them
     laps, _ = synthetic_race(n_drivers=16, compound_offsets=True, seed=3)
-    fit = fit_race(tag_laps(laps))
+    fit = fit_race(tag_laps(laps), fuel_interaction=False)
     ref = [c for c, v in fit.compound_offsets.items() if v == 0.0][0]
     for c, d in TRUE_DEG.items():
         assert fit.deg[c] == pytest.approx(d, abs=0.012), c
         assert fit.compound_offsets[c] == pytest.approx(COMPOUND_PACE[c] - COMPOUND_PACE[ref], abs=0.12), c
+
+
+def test_fit_recovers_fuel_dependent_compound_pace():
+    """Soft 0.6 s faster than the others on an empty tank, no faster on a full one (Buscombe's
+    'compounds collapse into one tyre' on full tanks). Needs softs run both early and late."""
+    strats = [("MEDIUM", "HARD"), ("SOFT", "HARD"), ("HARD", "SOFT"), ("MEDIUM", "SOFT"), ("SOFT", "MEDIUM"),
+              ("HARD", "MEDIUM")]
+    laps, _ = synthetic_race(n_drivers=20, n_laps=56, seed=4, noise=0.15, strategies=strats)
+    f = 1 - (laps["lap_number"] - 1) / 55
+    soft = laps["compound"] == "SOFT"
+    laps.loc[soft, "lap_time_s"] += -0.6 + 0.6 * f[soft]
+    fit = fit_race(tag_laps(laps), race_laps=56)
+    med_b = fit.compound_offsets.get("MEDIUM", 0.0)
+    med_f = fit.compound_fuel.get("MEDIUM", 0.0)
+    assert fit.compound_offsets["SOFT"] - med_b == pytest.approx(-0.6, abs=0.15)
+    assert fit.compound_fuel["SOFT"] - med_f == pytest.approx(0.6, abs=0.2)
+    assert abs(fit.deg_fuel) < 0.02
+    assert {"compound_fuel:SOFT", "deg_fuel", "race_laps"} <= set(fit.params["param"])
+
+
+def test_fuel_terms_stay_near_zero_when_there_is_no_fuel_effect():
+    from tests.conftest import COMPOUND_PACE
+
+    strats = [("MEDIUM", "HARD"), ("SOFT", "HARD"), ("HARD", "SOFT"), ("MEDIUM", "SOFT"), ("SOFT", "MEDIUM"),
+              ("HARD", "MEDIUM")]
+    laps, _ = synthetic_race(n_drivers=20, n_laps=56, seed=6, noise=0.15, compound_offsets=True, strategies=strats)
+    fit = fit_race(tag_laps(laps), race_laps=56)
+    mb, mf = fit.compound_offsets.get("MEDIUM", 0.0), fit.compound_fuel.get("MEDIUM", 0.0)
+    for c in ("SOFT", "HARD"):
+        assert fit.compound_offsets[c] - mb == pytest.approx(COMPOUND_PACE[c], abs=0.2), c
+        assert abs(fit.compound_fuel[c] - mf) < 0.25, c

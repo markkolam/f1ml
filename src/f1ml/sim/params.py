@@ -135,7 +135,7 @@ def prerace_params(store: Store, season: int, round_: int, ctx: PreraceContext,
                         WHERE season={season} AND round={round_} AND session IN ('Q', 'FP2', 'FP3')""")
     race_temp = float(w["t"].iloc[0]) if len(w) and pd.notna(w["t"].iloc[0]) else ref_temp
     dt = (race_temp - ref_temp) if np.isfinite(ref_temp) else 0.0
-    base, deg = [], []
+    base, deg, base_fuel = [], [], []
     for comp in COMPOUNDS:
         r = _track_row(tt, track, era, compound=comp)
         e_rows = tt[(tt["era_id"] == _era(tt, era)) & (tt["compound"] == comp)]
@@ -148,6 +148,21 @@ def prerace_params(store: Store, season: int, round_: int, ctx: PreraceContext,
             b = e_rows["base_raw"].median() if len(e_rows) else {"SOFT": -0.4, "HARD": 0.4}[comp]
         deg.append(max(float(d) + gamma * dt, 0.0))
         base.append(float(b))
+        # fuel dependence of the compound's pace vs MEDIUM (0 for MEDIUM itself)
+        if comp == "MEDIUM" or "base_fuel_post" not in tt:
+            bfv = 0.0
+        elif r is not None and pd.notna(r.get("base_fuel_post")):
+            bfv = float(r["base_fuel_post"])
+        else:
+            bfv = float(e_rows["base_fuel_era_mean"].dropna().iloc[0]) if e_rows["base_fuel_era_mean"].notna().any() else 0.0
+        base_fuel.append(bfv)
+    if "deg_fuel_post" in tt:
+        r = _track_row(tt, track, era, compound="MEDIUM")
+        e_rows = tt[tt["era_id"] == _era(tt, era)]
+        deg_fuel = float(r["deg_fuel_post"]) if r is not None and pd.notna(r.get("deg_fuel_post")) else \
+            (float(e_rows["deg_fuel_era_mean"].dropna().iloc[0]) if e_rows["deg_fuel_era_mean"].notna().any() else 0.0)
+    else:
+        deg_fuel = 0.0
 
     # ---- pit loss
     pl = c["pitloss_track"]
@@ -198,6 +213,7 @@ def prerace_params(store: Store, season: int, round_: int, ctx: PreraceContext,
     return RaceParams(
         drivers=list(f["driver"]), grid=grid, pace_s=pace_s, pace_sd_s=pace_sd_s, compounds=list(COMPOUNDS),
         base_s=np.array(base), deg_s=np.array(deg), laps=laps, ref_lap_s=ref, fuel_s_per_lap=fuel,
+        base_fuel_s=np.array(base_fuel), deg_fuel_s=deg_fuel,
         lap_noise_s=sigma, concertina_s=conc if np.isfinite(conc) else 12.0, pit_loss_s=loss,
         pass_a=a, pass_b=b, driver_pass_shift=shift, dirty_air_s=dirty,
         hz_intercept=float(co["intercept"]) + u, hz_lap1=float(co["lap1"]) + v, hz_restart=float(co["restart"]),
@@ -264,6 +280,10 @@ def replay_inputs(store: Store, season: int, round_: int, comps: dict[str, pd.Da
     base = np.where(np.isfinite(base), base - med, 0.0)
     deg = np.array([fp.get(f"deg:{cp}", np.nan) for cp in COMPOUNDS], float)
     deg = np.where(np.isfinite(deg), deg, np.nanmean(deg))
+    bfuel = np.array([fp.get(f"compound_fuel:{cp}", np.nan) for cp in COMPOUNDS], float)
+    bmed = bfuel[1] if np.isfinite(bfuel[1]) else (np.nanmin(bfuel) if np.isfinite(bfuel).any() else 0.0)
+    bfuel = np.where(np.isfinite(bfuel), bfuel - bmed, 0.0)
+    deg_fuel = float(fp.get("deg_fuel", 0.0))
 
     # actual neutralisation schedule (leader's lap status), retirements and lap-1 times
     lead = laps.sort_values("time_s").groupby("lap_number").first()
@@ -297,6 +317,7 @@ def replay_inputs(store: Store, season: int, round_: int, comps: dict[str, pd.Da
     p = RaceParams(
         drivers=drivers, grid=res.set_index("driver").loc[drivers, "grid_position"].replace(0, C + 1).to_numpy(float),
         pace_s=off, pace_sd_s=np.zeros(C), compounds=list(COMPOUNDS), base_s=base, deg_s=deg, laps=L,
+        base_fuel_s=bfuel, deg_fuel_s=deg_fuel,
         ref_lap_s=ref, fuel_s_per_lap=float(fp["fuel_effect"]), lap_noise_s=float(fp["sigma"]),
         pit_loss_s=loss, pass_a=a, pass_b=b, driver_pass_shift=shift, dirty_air_s=dirty,
     )

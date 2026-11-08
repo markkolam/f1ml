@@ -1,24 +1,24 @@
 # Component models (phase 3)
 
-Generated 2026-11-03 18:13 UTC from 2023-2026 race data (OpenF1).
+Generated 2026-11-08 14:44 UTC from 2023-2026 race data (OpenF1).
 
 ## Against Ruth Buscombe's published figures
 
 | quantity | buscombe | f1ml |
 |---|---|---|
-| Monza 2026 race deg (s/lap) | 0.03 | 0.020 |
-| Hungary 2026 green pit loss (s) | 21.9 measured | 22.551 |
-| Austin 2026 green pit loss (s) | 20.5-21.5 | 22.390 |
-| Mexico 2026 green pit loss (s) | 20.5 | 23.459 |
-| Madrid 2026 green pit loss (s) | ~24 (pre-race estimate) | 26.367 |
+| Monza 2026 race deg (s/lap) | 0.03 | 0.034 |
+| Hungary 2026 green pit loss (s) | 21.9 measured | 22.567 |
+| Austin 2026 green pit loss (s) | 20.5-21.5 | 22.363 |
+| Mexico 2026 green pit loss (s) | 20.5 | 23.455 |
+| Madrid 2026 green pit loss (s) | ~24 (pre-race estimate) | 25.879 |
 | Budapest 2026 pass attempts (<=1.2 s, green) | 225 | 221.000 |
 | Budapest 2026 passes by next lap | 28 | 27.000 |
-| Budapest 2026 50% pass threshold (s/lap) | 1.09 | 1.590 |
-| Austin 2026 50% pass threshold (s/lap) | 0.5-0.7 | 1.385 |
-| Singapore 50% pass threshold (s/lap) | 2.5 | 3.303 |
-| Monaco 50% pass threshold (s/lap) | 4.5 | 7.957 |
-| Verstappen pass-curve shift (s/lap) | ~0.2 better than field | 0.279 |
-| Dirty-air cost, 2026 era mean (s/lap) | ~0.3 (Norris, Austin) | 0.382 |
+| Budapest 2026 50% pass threshold (s/lap) | 1.09 | 1.604 |
+| Austin 2026 50% pass threshold (s/lap) | 0.5-0.7 | 1.422 |
+| Singapore 50% pass threshold (s/lap) | 2.5 | 3.349 |
+| Monaco 50% pass threshold (s/lap) | 4.5 | 7.790 |
+| Verstappen pass-curve shift (s/lap) | ~0.2 better than field | 0.277 |
+| Dirty-air cost, 2026 era mean (s/lap) | ~0.3 (Norris, Austin) | 0.376 |
 | Mexico late-race neutralisation hazard (per lap) | 1.3% | 1.438 |
 | Budapest 2026 lap-1 concertina (s) | 11.0 | 11.000 |
 
@@ -28,29 +28,29 @@ Notes: our pass thresholds use the expected (race-average) pace gap, which is sm
 
 | track_id | HARD | MEDIUM | SOFT |
 |---|---|---|---|
-| albert_park | 0.048 | 0.026 | 0.059 |
-| americas | 0.063 | 0.076 | 0.060 |
-| baku | nan | 0.028 | 0.018 |
-| catalunya | 0.105 | 0.154 | 0.078 |
-| hungaroring | 0.071 | 0.055 | 0.054 |
-| madring | 0.018 | 0.041 | 0.018 |
-| marina_bay | nan | 0.050 | 0.058 |
-| miami | 0.037 | 0.036 | 0.027 |
-| monaco | 0.043 | 0.044 | 0.035 |
-| monza | 0.027 | 0.026 | 0.033 |
-| red_bull_ring | 0.062 | 0.071 | 0.047 |
-| rodriguez | nan | 0.045 | 0.041 |
-| shanghai | 0.057 | 0.132 | nan |
-| silverstone | 0.064 | 0.056 | nan |
-| spa | 0.067 | 0.067 | 0.113 |
-| suzuka | 0.062 | 0.067 | nan |
-| zandvoort | 0.063 | 0.082 | 0.065 |
+| albert_park | 0.042 | 0.015 | 0.053 |
+| americas | 0.048 | 0.053 | 0.048 |
+| baku | nan | 0.031 | 0.031 |
+| catalunya | 0.084 | 0.149 | 0.070 |
+| hungaroring | 0.062 | 0.031 | 0.053 |
+| madring | 0.038 | 0.089 | 0.060 |
+| marina_bay | nan | 0.050 | 0.060 |
+| miami | 0.037 | 0.025 | 0.037 |
+| monaco | 0.047 | 0.064 | 0.057 |
+| monza | 0.035 | 0.037 | 0.043 |
+| red_bull_ring | 0.056 | 0.085 | 0.055 |
+| rodriguez | nan | 0.038 | 0.046 |
+| shanghai | 0.036 | 0.125 | nan |
+| silverstone | 0.045 | 0.014 | nan |
+| spa | 0.041 | 0.009 | 0.077 |
+| suzuka | 0.060 | 0.049 | nan |
+| zandvoort | 0.043 | 0.057 | 0.049 |
 
 Tyre parameters (temp_gamma = extra deg per lap of age per degree C of track temperature):
 
 | param | value | se |
 |---|---|---|
-| temp_gamma | 0.001 | 0.000 |
+| temp_gamma | 0.000 | 0.000 |
 | ref_temp:2022_ground_effect | 35.675 | nan |
 | ref_temp:2026_active_aero | 41.556 | nan |
 
@@ -63,59 +63,59 @@ Tyre parameters (temp_gamma = extra deg per lap of age per degree C of track tem
 | baku | 23.700 | 12.300 | 12.300 |
 | catalunya | 24.100 | 12.500 | 12.500 |
 | hungaroring | 22.600 | 11.700 | 11.700 |
-| madring | 26.400 | 13.700 | 13.700 |
+| madring | 25.900 | 13.500 | 13.500 |
 | marina_bay | 23.500 | 12.200 | 12.200 |
 | miami | 19.300 | 10.000 | 10.000 |
-| monaco | 21.300 | 11.100 | 11.100 |
+| monaco | 21.400 | 11.100 | 11.100 |
 | monza | 24.700 | 12.900 | 12.900 |
-| red_bull_ring | 21.400 | 11.100 | 11.100 |
+| red_bull_ring | 21.600 | 11.200 | 11.200 |
 | rodriguez | 23.500 | 12.200 | 12.200 |
-| sepang | 25.400 | 13.200 | 13.200 |
+| sepang | 25.700 | 13.400 | 13.400 |
 | shanghai | 24.900 | 12.900 | 12.900 |
 | silverstone | 22.700 | 11.800 | 11.800 |
-| spa | 22.800 | 11.900 | 11.900 |
+| spa | 22.900 | 11.900 | 11.900 |
 | suzuka | 23.300 | 12.100 | 12.100 |
-| villeneuve | 25.200 | 13.100 | 13.100 |
-| zandvoort | 20.000 | 10.400 | 10.400 |
+| villeneuve | 25.400 | 13.200 | 13.200 |
+| zandvoort | 20.100 | 10.400 | 10.400 |
 
 ## Overtaking, 2026: pass thresholds (s/lap of pace advantage)
 
 | track_id | n_attempts | pass_rate | threshold_50 | threshold_90 |
 |---|---|---|---|---|
-| monza | 244 | 0.210 | 1.050 | 2.330 |
-| miami | 140 | 0.160 | 1.170 | 2.210 |
-| silverstone | 135 | 0.130 | 1.260 | 2.250 |
-| shanghai | 179 | 0.170 | 1.320 | 2.780 |
-| red_bull_ring | 182 | 0.130 | 1.370 | 2.390 |
-| americas | 126 | 0.230 | 1.380 | 2.460 |
-| catalunya | 149 | 0.130 | 1.500 | 2.650 |
-| suzuka | 355 | 0.100 | 1.510 | 2.900 |
-| rodriguez | 323 | 0.060 | 1.510 | 2.480 |
-| villeneuve | 123 | 0.150 | 1.530 | 2.940 |
-| albert_park | 167 | 0.160 | 1.530 | 2.790 |
-| hungaroring | 221 | 0.120 | 1.590 | 2.520 |
-| spa | 175 | 0.140 | 1.680 | 3.190 |
-| zandvoort | 226 | 0.110 | 1.910 | 3.170 |
-| sepang | 155 | 0.170 | 2.220 | 4.630 |
-| baku | 189 | 0.110 | 2.340 | 4.300 |
-| marina_bay | 183 | 0.100 | 3.300 | 5.680 |
-| madring | 161 | 0.050 | 3.890 | 6.210 |
-| monaco | 235 | 0.010 | 7.960 | 12.260 |
+| monza | 244 | 0.210 | 1.040 | 2.320 |
+| miami | 140 | 0.160 | 1.160 | 2.200 |
+| silverstone | 135 | 0.130 | 1.230 | 2.220 |
+| villeneuve | 123 | 0.150 | 1.350 | 2.580 |
+| red_bull_ring | 182 | 0.130 | 1.370 | 2.380 |
+| americas | 126 | 0.230 | 1.420 | 2.530 |
+| shanghai | 179 | 0.170 | 1.470 | 3.080 |
+| rodriguez | 323 | 0.060 | 1.510 | 2.470 |
+| suzuka | 355 | 0.100 | 1.520 | 2.930 |
+| albert_park | 167 | 0.160 | 1.540 | 2.800 |
+| catalunya | 149 | 0.130 | 1.540 | 2.700 |
+| hungaroring | 221 | 0.120 | 1.600 | 2.540 |
+| spa | 175 | 0.140 | 1.740 | 3.290 |
+| zandvoort | 226 | 0.110 | 1.980 | 3.280 |
+| baku | 189 | 0.110 | 2.350 | 4.320 |
+| sepang | 155 | 0.170 | 2.450 | 5.170 |
+| marina_bay | 183 | 0.100 | 3.350 | 5.750 |
+| madring | 161 | 0.050 | 3.440 | 5.470 |
+| monaco | 235 | 0.010 | 7.790 | 11.990 |
 
 Driver pass-curve shifts (s/lap equivalent; positive = converts better than the field):
 
 | driver | logit_shift | pace_equiv_s | n_attempts |
 |---|---|---|---|
-| VER | 0.565 | 0.279 | 432 |
-| SAI | 0.387 | 0.191 | 803 |
-| PER | 0.312 | 0.154 | 544 |
-| HAM | 0.289 | 0.143 | 942 |
-| LEC | 0.266 | 0.131 | 757 |
-| STR | 0.257 | 0.127 | 922 |
-| RUS | 0.227 | 0.112 | 855 |
-| ALO | 0.188 | 0.093 | 880 |
-| PIA | 0.148 | 0.073 | 740 |
-| BEA | 0.140 | 0.069 | 622 |
+| VER | 0.552 | 0.277 | 432 |
+| SAI | 0.364 | 0.182 | 803 |
+| HAM | 0.311 | 0.156 | 942 |
+| PER | 0.276 | 0.138 | 544 |
+| RUS | 0.276 | 0.138 | 855 |
+| LEC | 0.274 | 0.137 | 757 |
+| STR | 0.243 | 0.122 | 922 |
+| ALO | 0.203 | 0.102 | 880 |
+| BEA | 0.163 | 0.082 | 622 |
+| PIA | 0.141 | 0.071 | 740 |
 
 ## Neutralisation hazard
 
@@ -173,14 +173,14 @@ Event mix by era:
 
 | team | state_mean | state_sd |
 |---|---|---|
-| Mercedes | -1.386 | 0.171 |
-| Ferrari | -1.277 | 0.171 |
-| Red Bull Racing | -1.182 | 0.171 |
-| McLaren | -1.022 | 0.172 |
-| Alpine | -0.063 | 0.171 |
-| Racing Bulls | 0.081 | 0.171 |
-| Audi | 0.157 | 0.171 |
-| Haas F1 Team | 0.609 | 0.171 |
-| Williams | 0.954 | 0.171 |
-| Aston Martin | 1.397 | 0.172 |
-| Cadillac | 1.974 | 0.172 |
+| Mercedes | -1.359 | 0.171 |
+| Ferrari | -1.244 | 0.171 |
+| Red Bull Racing | -1.126 | 0.171 |
+| McLaren | -0.986 | 0.172 |
+| Alpine | -0.024 | 0.171 |
+| Racing Bulls | 0.079 | 0.171 |
+| Audi | 0.213 | 0.171 |
+| Haas F1 Team | 0.610 | 0.171 |
+| Williams | 0.948 | 0.171 |
+| Aston Martin | 1.376 | 0.172 |
+| Cadillac | 1.938 | 0.172 |
