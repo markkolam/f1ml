@@ -109,3 +109,75 @@ def test_status_timeline_2026_wording():
     s = pd.Series(T0 + pd.to_timedelta([110, 152, 200, 310, 410], unit="s"))
     e = pd.Series(T0 + pd.to_timedelta([140, 158, 250, 350, 450], unit="s"))
     assert lap_status(s, e, times, states) == ["6", "7", "1", "5", "5"]
+
+
+class _FakeHTTP:
+    """Serves meeting-level OpenF1 data for sessions 10 (qualifying) and 11 (race)."""
+
+    def __init__(self):
+        self.calls = []
+
+    def get(self, url, params, timeout):
+        self.calls.append((url.rsplit("/", 1)[-1], dict(params)))
+        ep = url.rsplit("/", 1)[-1]
+        rows = []
+        if ep == "laps":
+            for sk in (10, 11):
+                for lap in (1, 2, 3):
+                    rows.append({"session_key": sk, "driver_number": 1, "lap_number": lap,
+                                 "date_start": iso(100 * lap), "lap_duration": 90.0, "is_pit_out_lap": False})
+        if ep == "stints":
+            rows = [{"session_key": sk, "driver_number": 1, "stint_number": 1, "lap_start": 1, "lap_end": 3,
+                     "compound": "MEDIUM", "tyre_age_at_start": 0} for sk in (10, 11)]
+
+        class R:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self_inner):
+                return rows
+        return R()
+
+
+def _source(tmp_path, now):
+    import pandas as pd
+
+    from f1ml.ingest.base import ScheduledEvent
+    from f1ml.ingest.openf1_source import OpenF1Client, OpenF1Source
+
+    class NoJolpica:
+        def results(self, *a, **k):
+            return pd.DataFrame()
+
+    http = _FakeHTTP()
+    src = OpenF1Source(tmp_path, NoJolpica(), client=OpenF1Client(tmp_path / "openf1", min_interval_s=0, session=http))
+    src._now = lambda: now
+    ev = ScheduledEvent(2026, 20, "Test GP", "Somewhere", "X", "conventional", T0,
+                        [("Qualifying", T0 - pd.Timedelta(days=1)), ("Race", T0)],
+                        extra={"meeting_key": 1, "session_keys": {"Qualifying": 10, "Race": 11}})
+    return src, ev, http
+
+
+def test_stale_post_qualifying_cache_is_refreshed(tmp_path):
+    """Regression: a weekend-level cache saved after qualifying lacked the race, so the race
+    'had no laps' (LookupError) after the weekend. It must refetch and heal the cache."""
+    import hashlib
+    import json
+
+    src, ev, http = _source(tmp_path, now=T0 + pd.Timedelta(days=2))
+    key = hashlib.sha1(json.dumps({"meeting_key": 1}, sort_keys=True).encode()).hexdigest()[:16]
+    stale = tmp_path / "openf1" / "laps" / f"{key}.json"
+    stale.parent.mkdir(parents=True)
+    stale.write_text(json.dumps([{"session_key": 10, "driver_number": 1, "lap_number": 1, "date_start": iso(100),
+                                  "lap_duration": 90.0, "is_pit_out_lap": False}]))
+    data = src.load_session(ev, "Race", "R")
+    assert len(data.laps) == 3
+    assert any(x["session_key"] == 11 for x in json.loads(stale.read_text()))   # cache healed
+
+
+def test_weekend_in_progress_is_not_cached(tmp_path):
+    src, ev, http = _source(tmp_path, now=T0 - pd.Timedelta(hours=12))   # before the race
+    src.load_session(ev, "Qualifying", "Q")
+    assert not list((tmp_path / "openf1").rglob("*.json"))

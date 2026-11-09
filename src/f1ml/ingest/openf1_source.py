@@ -31,6 +31,7 @@ from f1ml.ingest.jolpica import JolpicaClient
 log = logging.getLogger(__name__)
 
 OPENF1_FIRST_SEASON = 2023
+FINAL_AFTER = pd.Timedelta(hours=8)   # weekend data is cached only once the last session is this old
 BASE_URL = "https://api.openf1.org/v1"
 
 
@@ -45,15 +46,18 @@ class OpenF1Client:
         self._last = 0.0
 
     def _cache_path(self, endpoint: str, params: dict) -> Path | None:
-        # Only cache queries pinned to a meeting/session (immutable once the weekend is over).
+        # Only queries pinned to a meeting/session are cacheable; callers decide whether the
+        # data is final yet (see OpenF1Source: a weekend in progress is never cached).
         if not self.cache_dir or not ({"meeting_key", "session_key"} & params.keys()):
             return None
         key = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
         return self.cache_dir / endpoint / f"{key}.json"
 
-    def get(self, endpoint: str, **params) -> list[dict]:
-        cp = self._cache_path(endpoint, params)
-        if cp and cp.exists():
+    def get(self, endpoint: str, *, cache: bool = True, refresh: bool = False, **params) -> list[dict]:
+        """GET an OpenF1 endpoint. `cache`: read/write the on-disk cache; `refresh`: ignore any
+        cached copy and overwrite it."""
+        cp = self._cache_path(endpoint, params) if cache else None
+        if cp and cp.exists() and not refresh:
             return json.loads(cp.read_text())
         for attempt in range(6):
             wait = self.min_interval_s - (time.monotonic() - self._last)
@@ -375,12 +379,27 @@ class OpenF1Source:
             ))
         return events
 
-    def _meeting(self, meeting_key: int, endpoint: str) -> pd.DataFrame:
+    def _now(self) -> pd.Timestamp:
+        return pd.Timestamp.now(tz="UTC").tz_localize(None)
+
+    def _final(self, event: ScheduledEvent) -> bool:
+        """A weekend's data is treated as final (cacheable) only once its last session started
+        more than FINAL_AFTER ago. Caching earlier froze e.g. a post-qualifying snapshot of the
+        weekend's laps, so the race was later 'missing' (bug fixed Nov 2026)."""
+        starts = [pd.Timestamp(ts) for _, ts in event.sessions if ts is not None]
+        if not starts:
+            return False
+        last = max(starts)
+        last = last.tz_convert("UTC").tz_localize(None) if last.tzinfo is not None else last
+        return last + FINAL_AFTER < self._now()
+
+    def _meeting(self, meeting_key: int, endpoint: str, cache: bool = True, refresh: bool = False) -> pd.DataFrame:
         k = (meeting_key, endpoint)
-        if k not in self._meeting_cache:
+        if refresh or k not in self._meeting_cache:
             if len(self._meeting_cache) > 40:
                 self._meeting_cache.clear()
-            self._meeting_cache[k] = pd.DataFrame(self.client.get(endpoint, meeting_key=meeting_key))
+            self._meeting_cache[k] = pd.DataFrame(
+                self.client.get(endpoint, cache=cache, refresh=refresh, meeting_key=meeting_key))
         return self._meeting_cache[k]
 
     def load_session(self, event: ScheduledEvent, session_name: str, code: str,
@@ -393,16 +412,23 @@ class OpenF1Source:
             raise LookupError(f"no OpenF1 session for {event.season} R{event.round} {session_name}")
         t0 = dict(event.sessions)[session_name]
 
-        def of(endpoint):
-            df = self._meeting(mk, endpoint)
+        final = self._final(event)
+        endpoints = ("laps", "stints", "pit", "race_control", "drivers", "weather")
+
+        def of(endpoint, refresh=False):
+            df = self._meeting(mk, endpoint, cache=final, refresh=refresh)
             return df[df["session_key"] == sk] if not df.empty and "session_key" in df else df
 
-        laps, stints, pit, rc, drivers, weather = (of(e) for e in
-                                                   ("laps", "stints", "pit", "race_control", "drivers", "weather"))
+        laps, stints, pit, rc, drivers, weather = (of(e) for e in endpoints)
         if laps.empty:
-            raise LookupError(f"OpenF1 returned no laps for {event.season} R{event.round} {session_name}")
+            # A copy saved earlier in the weekend can lack later sessions: refetch the whole
+            # weekend once, overwriting stale cache files.
+            laps, stints, pit, rc, drivers, weather = (of(e, refresh=True) for e in endpoints)
+        if laps.empty:
+            raise LookupError(f"OpenF1 returned no laps for {event.season} R{event.round} {session_name} "
+                              "(not published yet? OpenF1 usually has a race within a few hours)")
         is_race = code in ("R", "S")
-        res = pd.DataFrame(self.client.get("session_result", session_key=sk))
+        res = pd.DataFrame(self.client.get("session_result", cache=final, session_key=sk))
         jres = None
         if is_race:
             try:
